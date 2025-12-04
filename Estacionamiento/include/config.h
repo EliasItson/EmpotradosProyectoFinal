@@ -5,6 +5,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Nota: no incluir <Arduino.h> aquí para evitar errores de includePath en el IDE
+
 // ==================== PINES ====================
 // No cambies estos a menos que modifiques el hardware físico
 
@@ -22,12 +24,23 @@
 #define SWITCH_SLOT3   14
 #define SWITCH_SLOT4   26
 
+// Número de cajones configurados
+#define SLOTS_COUNT 4
+
 // Actuadores
 #define SERVO_PIN      15
-#define LED_RED_SLOT1  21
-#define LED_RED_SLOT2  22
-#define LED_RED_SLOT3  23
-#define LED_RED_SLOT4  25
+// Entrypoint servo (mantener por compatibilidad)
+#define SERVO_ENTRY_PIN SERVO_PIN
+// Servo para salida (segunda pluma)
+#define SERVO_EXIT_PIN  18
+
+// NOTA: los pines I2C por defecto en ESP32 suelen ser 21 (SDA) y 22 (SCL).
+// En la configuración anterior los LEDs estaban mapeados a 21/22, lo cual
+// entra en conflicto con I2C. Se reasignan aquí pines libres para los LEDs.
+#define LED_RED_SLOT1  2
+#define LED_RED_SLOT2  4
+#define LED_RED_SLOT3  16
+#define LED_RED_SLOT4  17
 #define BUZZER_PIN     19
 
 // Display LCD I2C
@@ -82,6 +95,10 @@
 #define DENIED_BEEP_DURATION 500    // Duración de cada beep (ms)
 #define DENIED_BEEP_PAUSE 200       // Pausa entre beeps (ms)
 
+// Secuencia de salida (timers en ms)
+#define EXIT_RAISE_MS 3000
+#define EXIT_LOWER_MS 3000
+
 // ==================== MENSAJES DEL DISPLAY ====================
 
 // Línea 1 y 2 pueden tener máximo 16 caracteres
@@ -102,13 +119,18 @@
 #define MSG_READY_1 "Sistema Listo"
 #define MSG_READY_2 "Esperando..."
 
+// Mensaje cuando no hay disponibilidad
+#define MSG_FULL_1 "LLENO"
+#define MSG_FULL_2 "Intente luego"
+
 // ==================== TARJETAS RFID AUTORIZADAS ====================
 
 // Agrega aquí los UIDs de tus tarjetas
 // Formato: "XX:XX:XX:XX"
 // Para obtener UIDs, carga rfid_register.cpp
 
-const String AUTHORIZED_CARDS[] = {
+// Usar `const char*` para evitar depender de `String` en el header
+const char* AUTHORIZED_CARDS[] = {
   "12:34:56:78",  // Tarjeta 1 - Reemplaza con UID real
   "87:65:43:21"   // Tarjeta 2 - Agrega más si necesitas
 };

@@ -5,8 +5,7 @@
 #include <MFRC522.h>
 #include <SPI.h>
 
-#define RFID_SS_PIN     5    // Chip Select
-#define RFID_RST_PIN    27   // Reset
+#include "config.h"
 
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 
@@ -80,7 +79,7 @@ String getCardUID() {
 }
 
 void printArrayFormat() {
-  Serial.println("\nconst String AUTHORIZED_CARDS[] = {");
+  Serial.println("\nconst char* AUTHORIZED_CARDS[] = {");
   for (int i = 0; i < cardCount; i++) {
     Serial.print("  \"" + registeredCards[i] + "\"");
     if (i < cardCount - 1) {

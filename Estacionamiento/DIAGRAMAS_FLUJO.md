@@ -36,6 +36,10 @@
          │Espera Ultrasónico    │   │ Vuelve a estado  │
          │(distancia > 30cm)    │   │ "Sistema Listo"  │
          └────────┬─────────────┘   └──────────────────┘
+                │
+                ▼
+         Nota: Antes de conceder acceso se verifica la disponibilidad.
+         Si no hay cajones disponibles → Mostrar "LLENO" y denegar acceso.
                   │
                   ├─ COCHE PASA ──→ Servo baja (180°)
                   │                 Display: "Pase seguro"
@@ -87,6 +91,10 @@ LED ROJO ON                            LED ROJO OFF
      │                                          │
      ▼                                          ▼
 Serial.print("Cajón X - OCUPADO")      Serial.print("Cajón X - DISPONIBLE")
+
+Nota: Al cambiar a OCUPADO se decrementa el contador de disponibilidad.
+Al cambiar a DISPONIBLE se incrementa y se lanza la secuencia de salida
+(levantar pluma -> esperar 3s -> bajar pluma) para permitir la salida.
 ```
 
 ---
