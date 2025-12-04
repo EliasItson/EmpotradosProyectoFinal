@@ -69,6 +69,7 @@ void displayMessage(String line1, String line2 = "");
 void clearDisplay();
 void updateBarrierLogic();
 void updateDisplayLogic();
+void displayAvailableSlots();
 
 void setup() {
 	Serial.begin(115200);
@@ -76,7 +77,8 @@ void setup() {
 	setupActuators();
 	lcd.init();
 	lcd.backlight();
-	displayMessage("Sistema Listo", "Esperando...");
+	// Mostrar estado inicial con contador de espacios disponibles
+	displayAvailableSlots();
 }
 
 void loop() {
@@ -247,7 +249,26 @@ void updateBarrierLogic() {
 		}
 	}
 }
-void updateDisplayLogic() { if (deniedMessageActive && displayMessageTimer.update()) { deniedMessageActive = false; displayMessage("Sistema Listo","Esperando..."); } if (authorizedMessageActive && successMessageTimer.update()) { authorizedMessageActive = false; displayMessage("Sistema Listo","Esperando..."); } }
+void updateDisplayLogic() {
+	if (deniedMessageActive && displayMessageTimer.update()) {
+		deniedMessageActive = false;
+		// Restaurar pantalla por defecto con contador
+		displayAvailableSlots();
+	}
+	if (authorizedMessageActive && successMessageTimer.update()) {
+		authorizedMessageActive = false;
+		// Restaurar pantalla por defecto con contador
+		displayAvailableSlots();
+	}
+}
+
+// Muestra en el LCD la cantidad de espacios disponibles cuando no hay mensajes
+void displayAvailableSlots() {
+	String line2 = String("Disp: ") + String(availableSlots);
+	// Asegurar que la línea tiene máximo 16 caracteres
+	if (line2.length() > 16) line2 = line2.substring(0, 16);
+	displayMessage(MSG_READY_1, line2);
+}
 
 void playWelcomeSound() {
 	buzzerBeepsNeeded = WELCOME_BEEPS;
