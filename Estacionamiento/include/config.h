@@ -6,7 +6,7 @@
 #define CONFIG_H
 
 // ==================== PINES ====================
-// 
+//
 
 // RFID (SPI)
 #define RFID_SS_PIN 5
@@ -67,7 +67,6 @@
 #define ULTRASONIC_TRIG_PREP_US 2
 #define ULTRASONIC_TRIG_PULSE_US 10
 
-
 // ==================== CONFIGURACIÓN DEL SENSOR ULTRASÓNICO ====================
 
 // Distancia en cm por la cual se considera que hay un obstáculo (vehículo bloqueando)
@@ -75,7 +74,6 @@
 // Si distancia >= THRESHOLD: camino libre (auto pasó o no hay auto)
 #define ULTRASONIC_THRESHOLD 30
 #define ULTRASONIC_FACTOR 0.0343
-
 
 // ==================== CONFIGURACIÓN DEL SERVOMOTOR ====================
 
@@ -126,9 +124,9 @@
 
 // Formato: "XX:XX:XX:XX"
 
-static const char* AUTHORIZED_CARDS[] = {
-  "1C:21:09:49",  // Tarjeta 1
-  "43:23:7A:1A"   // Tarjeta 2
+static const char *AUTHORIZED_CARDS[] = {
+    "1C:21:09:49", // Tarjeta 1
+    "43:23:7A:1A"  // Tarjeta 2
 };
 
 static const int AUTHORIZED_CARDS_COUNT = 2;
@@ -150,6 +148,10 @@ static const int AUTHORIZED_CARDS_COUNT = 2;
 #define SERIAL_BAUD 115200
 
 #endif // CONFIG_H
+
+// NTP defaults
+#define NTP_SERVER "pool.ntp.org"
+#define NTP_TIMEOUT_MS 10000
 
 // =====================================================================
 // INSTRUCCIONES DE USO:

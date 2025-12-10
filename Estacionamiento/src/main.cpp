@@ -12,6 +12,7 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <time.h>
 
 // ==================== VARIABLES GLOBALES ====================
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
@@ -85,6 +86,10 @@ WebServer server(80);
 String latestRFIDUID = "--";
 float lastDistance = 0.0;
 
+// Timestamps de entrada/salida por cajón ("--" si no hay registro)
+String lastEntryTime[SLOTS_COUNT];
+String lastExitTime[SLOTS_COUNT];
+
 // Parámetros configurables (valores por defecto tomados de config.h)
 int TIEMPO_APERTURA_MS = SERVO_TRANSITION_TIME;
 int SALIDA_DELAY_MS = EXIT_RAISE_MS;
@@ -136,6 +141,22 @@ void setup()
 		Serial.println();
 		Serial.print("WiFi conectado. IP: ");
 		Serial.println(WiFi.localIP());
+
+		// Inicializar sincronización NTP
+		configTime(0, 0, NTP_SERVER);
+		// Intentar obtener hora por hasta NTP_TIMEOUT_MS
+		Serial.println("Sincronizando hora NTP...");
+		unsigned long start = millis();
+		struct tm timeinfo;
+		while (millis() - start < NTP_TIMEOUT_MS)
+		{
+			if (getLocalTime(&timeinfo))
+			{
+				Serial.println("Hora sincronizada");
+				break;
+			}
+			delay(200);
+		}
 	}
 	else
 	{
@@ -148,6 +169,27 @@ void setup()
 	server.begin();
 	Serial.print("Web server iniciado en http://");
 	Serial.println(WiFi.localIP());
+
+	// Inicializar timestamps por cajón
+	for (int i = 0; i < SLOTS_COUNT; i++)
+	{
+		lastEntryTime[i] = "--";
+		lastExitTime[i] = "--";
+	}
+}
+
+// Devuelve fecha/hora formateada en ISO-like "YYYY-MM-DD HH:MM:SS" o "--" si no hay hora
+String getFormattedTime()
+{
+	time_t now = time(nullptr);
+	struct tm timeinfo;
+	if (!localtime_r(&now, &timeinfo))
+	{
+		return String("--");
+	}
+	char buf[32];
+	strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+	return String(buf);
 }
 
 void loop()
@@ -354,6 +396,8 @@ void checkParkingSlots()
 		{
 			slotOccupied[i] = true;
 			updateLED(i, true);
+			// Registrar timestamp de entrada
+			lastEntryTime[i] = getFormattedTime();
 			// Si hay reservas pendientes, asociar una a esta ocupación.
 			if (pendingEntries > 0)
 			{
@@ -381,6 +425,8 @@ void checkParkingSlots()
 		{
 			slotOccupied[i] = false;
 			updateLED(i, false);
+			// Registrar timestamp de salida
+			lastExitTime[i] = getFormattedTime();
 			availableSlots++;
 			Serial.printf("Cajon %d - DISPONIBLE. Disponibles: %d\n", i + 1, availableSlots);
 			// Actualizar contador en pantalla si no hay mensajes temporales activos
@@ -559,12 +605,16 @@ void setupWebServer()
 		html += "    <p id=\"plumaSalida\">Pluma Salida: --</p>\n";
 		html += "    <p id=\"cajon1\">Cajón 1: --</p>\n";
 		html += "    <p id=\"cajon2\">Cajón 2: --</p>\n";
+		html += "    <p id=\"entry1\">Entrada 1: --</p>\n";
+		html += "    <p id=\"exit1\">Salida 1: --</p>\n";
+		html += "    <p id=\"entry2\">Entrada 2: --</p>\n";
+		html += "    <p id=\"exit2\">Salida 2: --</p>\n";
 		html += "  </div>\n";
 		html += "  <div id=\"configuracion\">\n";
-		html += "    <h2>Parámetros Configurables</h2>\n";
-		html += "    <label>Tiempo apertura pluma (ms):<input type=\"number\" id=\"tiempoPluma\"></label>\n";
-		html += "    <label>Delay pluma salida (ms):<input type=\"number\" id=\"delaySalida\"></label>\n";
-		html += "    <button onclick=\"guardarParametros()\">Guardar</button>\n";
+	html += "    <h2>Parámetros Configurables</h2>\n";
+	html += "    <label>Tiempo apertura pluma (ms):<input type=\"number\" id=\"tiempoPluma\"></label>\n";
+	html += "    <label>Delay pluma salida (ms):<input type=\"number\" id=\"delaySalida\"></label>\n";
+	html += "    <button onclick=\"guardarParametros()\">Guardar</button>\n";
 		html += "  </div>\n";
 		html += "  <script>\n";
 		html += "    let enfoque = false;\n";
@@ -576,6 +626,10 @@ void setupWebServer()
 		html += "        document.getElementById(\"plumaSalida\").innerText=\"Pluma Salida: \"+(d.plumaSalida?\"Abierta\":\"Cerrada\");\n";
 		html += "        document.getElementById(\"cajon1\").innerText=\"Cajón 1: \"+(d.cajon1?\"Ocupado\":\"Libre\");\n";
 		html += "        document.getElementById(\"cajon2\").innerText=\"Cajón 2: \"+(d.cajon2?\"Ocupado\":\"Libre\");\n";
+		html += "        document.getElementById(\"entry1\").innerText=\"Entrada 1: \"+ (d.entryTime1?d.entryTime1:\"--\");\n";
+		html += "        document.getElementById(\"exit1\").innerText=\"Salida 1: \"+ (d.exitTime1?d.exitTime1:\"--\");\n";
+		html += "        document.getElementById(\"entry2\").innerText=\"Entrada 2: \"+ (d.entryTime2?d.entryTime2:\"--\");\n";
+		html += "        document.getElementById(\"exit2\").innerText=\"Salida 2: \"+ (d.exitTime2?d.exitTime2:\"--\");\n";
 		html += "      }).catch(e=>console.error(\"Error:\",e));\n";
 		html += "    }\n";
 		html += "    function actualizarParametros() {\n";
@@ -607,7 +661,7 @@ void setupWebServer()
 
 void handle_getStatus()
 {
-	DynamicJsonDocument doc(256);
+	DynamicJsonDocument doc(512);
 	doc["rfidUID"] = latestRFIDUID;
 	doc["distancia"] = lastDistance;
 	doc["plumaEntrada"] = entranceBarrierRaised;
@@ -616,6 +670,14 @@ void handle_getStatus()
 	{
 		String key = String("cajon") + String(i + 1);
 		doc[key] = slotOccupied[i];
+	}
+	// Agregar timestamps de entrada/salida
+	for (int i = 0; i < SLOTS_COUNT; i++)
+	{
+		String ekey = String("entryTime") + String(i + 1);
+		String xkey = String("exitTime") + String(i + 1);
+		doc[ekey] = lastEntryTime[i];
+		doc[xkey] = lastExitTime[i];
 	}
 	String out;
 	serializeJson(doc, out);
