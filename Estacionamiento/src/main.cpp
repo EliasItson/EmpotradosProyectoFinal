@@ -6,8 +6,12 @@
 #include <MFRC522.h>
 #include <SPI.h>
 #include <NoDelay.h>
+#include <WiFi.h>
 
 #include "config.h"
+#include "webserver.h"
+#include "config_prefs.h"
+#include <ESPmDNS.h>
 
 // ==================== VARIABLES GLOBALES ====================
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
@@ -48,6 +52,19 @@ int availableSlots = SLOTS_COUNT;
 // Reservas temporales por accesos concedidos que aún no se han estacionado
 int pendingEntries = 0;
 
+// ==================== VARIABLES PARA WEB SERVER ====================
+// Datos que expone la API para monitoreo
+float currentDistance = 0.0;
+String lastRFIDCard = "";
+unsigned long systemUptime = 0;
+float systemTemperature = 25.0;
+
+// Variables configurables desde la API (inicialmente de config.h)
+int ULTRASONIC_THRESHOLD_CONFIG = ULTRASONIC_THRESHOLD;
+int ULTRASONIC_TIMEOUT_CONFIG = ULTRASONIC_TIMEOUT_MS;
+int LOWER_BARRIER_WAIT_CONFIG = LOWER_BARRIER_WAIT_MS;
+int DISPLAY_MESSAGE_CONFIG = DISPLAY_MESSAGE_MS;
+
 // Declaraciones
 void setupSensors();
 void setupActuators();
@@ -84,10 +101,48 @@ void setup() {
 	display.clearDisplay();
 	display.display();
 	// Mostrar estado inicial con contador de espacios disponibles
+
+	// Cargar configuración persistente (si existe)
+	loadConfigPrefs();
+
+	// Mostrar estado inicial con contador de espacios disponibles
 	displayAvailableSlots();
+
+	// Conectar WiFi y arrancar servidor web si está habilitado
+#if WIFI_AUTO_START
+	Serial.printf("[WIFI] Iniciando conexión a SSID: %s\n", WIFI_SSID);
+	WiFi.begin(WIFI_SSID, WIFI_PASS);
+	unsigned long start = millis();
+	const unsigned long timeout = 15000; // 15s
+	while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeout) {
+		delay(200);
+		Serial.print('.');
+	}
+	if (WiFi.status() == WL_CONNECTED) {
+		Serial.println();
+		Serial.print("[WIFI] Conectado. IP: ");
+		Serial.println(WiFi.localIP());
+		// iniciar mDNS
+		if (MDNS.begin(MDNS_NAME)) {
+			Serial.printf("[MDNS] Resuelto como http://%s.local\n", MDNS_NAME);
+		} else {
+			Serial.println("[MDNS] No se pudo iniciar mDNS");
+		}
+		// Inicializar servidor web
+		initWebServer();
+	} else {
+		Serial.println();
+		Serial.println("[WIFI] No se pudo conectar dentro del timeout. Web server no iniciado.");
+	}
+#else
+	Serial.println("[WIFI] Auto-start deshabilitado. Para habilitar, configurar WIFI_AUTO_START en config.h");
+#endif
 }
 
 void loop() {
+	// Actualizar uptime (en milisegundos, la API lo convertirá a segundos)
+	systemUptime = millis();
+	
 	updateBarrierLogic();
 	updateDisplayLogic();
 	checkRFID();
@@ -151,6 +206,9 @@ void handleAuthorizedUser() {
 		return;
 	}
 
+	// Actualizar variable global de última tarjeta RFID
+	lastRFIDCard = getCardUID();
+
 	// Crear una reserva temporal: decremento real ocurrirá cuando el usuario
 	// confirme ocupación presionando el switch del cajón.
 	pendingEntries++;
@@ -188,6 +246,9 @@ void checkUltrasonicSensor() {
 	
 	// Convertir duración a distancia (cm)
 	float distance = duration * ULTRASONIC_FACTOR / 2;
+	
+	// Actualizar variable global para la API web
+	currentDistance = distance;
 	
 	Serial.printf("[US] Duration: %lu us | Distancia: %f cm\n", duration, distance);
 	

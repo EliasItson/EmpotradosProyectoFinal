@@ -149,6 +149,14 @@ static const int AUTHORIZED_CARDS_COUNT = 2;
 // Baudrate del Serial Monitor
 #define SERIAL_BAUD 115200
 
+// ==================== WIFI (Fase 2) ====================
+// Cambia estos valores por tu red WiFi. Si no quieres iniciar WiFi
+// automáticamente, pon WIFI_AUTO_START en 0.
+#define WIFI_SSID "Rat World"
+#define WIFI_PASS "274000403"
+#define WIFI_AUTO_START 1
+#define MDNS_NAME "estacionamiento"
+
 #endif // CONFIG_H
 
 // =====================================================================

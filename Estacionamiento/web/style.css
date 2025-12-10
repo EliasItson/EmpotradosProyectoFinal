@@ -1,0 +1,406 @@
+/* ========== ESTILOS GENERALES ========== */
+:root {
+  --primary-color: #2c3e50;
+  --secondary-color: #3498db;
+  --success-color: #27ae60;
+  --warning-color: #f39c12;
+  --danger-color: #e74c3c;
+  --light-bg: #ecf0f1;
+  --dark-text: #2c3e50;
+  --border-color: #bdc3c7;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--light-bg);
+  color: var(--dark-text);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* ========== HEADER ========== */
+header {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  padding: 30px;
+  border-radius: 10px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h1 {
+  font-size: 2.5em;
+  margin-bottom: 5px;
+}
+
+header p {
+  font-size: 0.9em;
+  opacity: 0.9;
+}
+
+.status-badge {
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+.status-badge.connected {
+  background-color: var(--success-color);
+}
+
+.status-badge.disconnected {
+  background-color: var(--danger-color);
+}
+
+/* ========== DASHBOARD ========== */
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.panel {
+  background: white;
+  border-radius: 10px;
+  padding: 25px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-left: 5px solid var(--secondary-color);
+}
+
+.panel h2 {
+  margin-bottom: 20px;
+  color: var(--primary-color);
+  font-size: 1.5em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ========== ESTADO GRID ========== */
+.estado-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.estado-item {
+  background-color: var(--light-bg);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.estado-item label {
+  display: block;
+  font-weight: bold;
+  font-size: 0.9em;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.estado-item .valor {
+  font-size: 1.4em;
+  font-weight: bold;
+  color: var(--primary-color);
+  padding: 8px 0;
+}
+
+.estado-abierto {
+  color: var(--success-color) !important;
+}
+
+.estado-cerrado {
+  color: var(--danger-color) !important;
+}
+
+.estado-ocupado {
+  color: var(--danger-color) !important;
+}
+
+.estado-libre {
+  color: var(--success-color) !important;
+}
+
+/* ========== CONFIGURACIÓN ========== */
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.config-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.config-item label {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: var(--primary-color);
+  font-size: 0.95em;
+}
+
+.config-item input {
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 1em;
+  transition: border-color 0.3s;
+}
+
+.config-item input:focus {
+  outline: none;
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
+}
+
+/* ========== BOTONES ========== */
+.button-group, .status-message {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 5px;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-primary {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #2980b9;
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+.btn-secondary {
+  background-color: #95a5a6;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #7f8c8d;
+}
+
+.status-message {
+  padding: 10px;
+  border-radius: 5px;
+  display: none;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.status-message.success {
+  display: block;
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-message.error {
+  display: block;
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+/* ========== GRÁFICA DEL ESTACIONAMIENTO ========== */
+.estacionamiento-visual {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 30px;
+  padding: 30px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  min-height: 250px;
+}
+
+.barrier {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.barrier-label {
+  font-weight: bold;
+  font-size: 0.9em;
+  color: var(--primary-color);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.barrier-arm {
+  width: 120px;
+  height: 20px;
+  background-color: #95a5a6;
+  border-radius: 10px;
+  transition: transform 0.3s, background-color 0.3s;
+  position: relative;
+}
+
+.barrier-arm.abierta {
+  transform: rotateZ(45deg);
+  background-color: var(--success-color);
+}
+
+.barrier-arm::after {
+  content: '';
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border-radius: 50%;
+}
+
+.parking-lot {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+}
+
+.slot {
+  width: 150px;
+  height: 120px;
+  border: 3px solid var(--border-color);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  transition: all 0.3s;
+  background-color: #ecfdf5;
+  cursor: pointer;
+}
+
+.slot.ocupado {
+  background-color: #fee;
+  border-color: var(--danger-color);
+}
+
+.slot.libre {
+  background-color: #ecfdf5;
+  border-color: var(--success-color);
+}
+
+.slot-label {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: var(--primary-color);
+}
+
+.slot-status {
+  font-size: 0.9em;
+  margin-top: 8px;
+  font-weight: bold;
+}
+
+.slot.ocupado .slot-status {
+  color: var(--danger-color);
+}
+
+.slot.libre .slot-status {
+  color: var(--success-color);
+}
+
+/* ========== SISTEMA GRID ========== */
+.sistema-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.info-item {
+  background-color: var(--light-bg);
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid var(--secondary-color);
+}
+
+.info-item strong {
+  color: var(--primary-color);
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.95em;
+}
+
+.info-item p {
+  font-size: 1.2em;
+  color: var(--secondary-color);
+  font-weight: 600;
+}
+
+/* ========== FOOTER ========== */
+footer {
+  text-align: center;
+  padding: 20px;
+  color: #7f8c8d;
+  border-top: 1px solid var(--border-color);
+  margin-top: 30px;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    text-align: center;
+    gap: 10px;
+  }
+
+  header h1 {
+    font-size: 2em;
+  }
+
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .estado-grid, .config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .estacionamiento-visual {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .btn {
+    padding: 10px 16px;
+    font-size: 0.9em;
+  }
+}

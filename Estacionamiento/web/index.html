@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estacionamiento Inteligente - Panel Control</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🅿️ Estacionamiento Inteligente</h1>
+      <p id="serverStatus" class="status-badge">Conectando...</p>
+    </header>
+
+    <div class="dashboard">
+      <!-- ESTADO ACTUAL -->
+      <section class="panel estado-panel">
+        <h2>📊 Estado Actual</h2>
+        <div class="estado-grid">
+          <div class="estado-item">
+            <label>Distancia Ultrasónica:</label>
+            <p id="distancia" class="valor">-- cm</p>
+          </div>
+          <div class="estado-item">
+            <label>Última Tarjeta RFID:</label>
+            <p id="rfidUID" class="valor">--</p>
+          </div>
+          <div class="estado-item">
+            <label>Pluma Entrada:</label>
+            <p id="plumaEntrada" class="valor estado-cerrado">Cerrada</p>
+          </div>
+          <div class="estado-item">
+            <label>Pluma Salida:</label>
+            <p id="plumaSalida" class="valor estado-cerrado">Cerrada</p>
+          </div>
+          <div class="estado-item">
+            <label>Cajón 1:</label>
+            <p id="cajon1" class="valor estado-libre">Libre</p>
+          </div>
+          <div class="estado-item">
+            <label>Cajón 2:</label>
+            <p id="cajon2" class="valor estado-libre">Libre</p>
+          </div>
+          <div class="estado-item">
+            <label>Espacios Disponibles:</label>
+            <p id="disponibles" class="valor">-- / 2</p>
+          </div>
+          <div class="estado-item">
+            <label>Última Actualización:</label>
+            <p id="timestamp" class="valor">--</p>
+          </div>
+        </div>
+        <button onclick="actualizarEstado()" class="btn btn-primary">Actualizar Ahora</button>
+      </section>
+
+      <!-- PARÁMETROS CONFIGURABLES -->
+      <section class="panel configuracion-panel">
+        <h2>⚙️ Configuración</h2>
+        <div class="config-grid">
+          <div class="config-item">
+            <label for="ultrasonicThreshold">Umbral Ultrasónico (cm):</label>
+            <input type="number" id="ultrasonicThreshold" min="5" max="400" value="30">
+          </div>
+          <div class="config-item">
+            <label for="ultrasonicTimeout">Timeout Ultrasónico (ms):</label>
+            <input type="number" id="ultrasonicTimeout" min="1000" max="20000" step="1000" value="5000">
+          </div>
+          <div class="config-item">
+            <label for="lowerBarrierWait">Espera Bajada Pluma (ms):</label>
+            <input type="number" id="lowerBarrierWait" min="500" max="5000" step="100" value="3000">
+          </div>
+          <div class="config-item">
+            <label for="displayMessage">Duración Mensajes Pantalla (ms):</label>
+            <input type="number" id="displayMessage" min="1000" max="10000" step="500" value="3000">
+          </div>
+        </div>
+        <div class="button-group">
+          <button onclick="obtenerParametros()" class="btn btn-secondary">Cargar</button>
+          <button onclick="guardarParametros()" class="btn btn-primary">Guardar</button>
+        </div>
+        <p id="configStatus" class="status-message"></p>
+      </section>
+
+      <!-- REPRESENTACIÓN GRÁFICA -->
+      <section class="panel grafica-panel">
+        <h2>🏗️ Estado del Estacionamiento</h2>
+        <div class="estacionamiento-visual">
+          <div class="barrier entrance-barrier">
+            <div class="barrier-label">ENTRADA</div>
+            <div class="barrier-arm" id="barrierEntrance"></div>
+          </div>
+          
+          <div class="parking-lot">
+            <div class="slot" id="slot1">
+              <div class="slot-label">Cajón 1</div>
+              <div class="slot-status">Libre</div>
+            </div>
+            <div class="slot" id="slot2">
+              <div class="slot-label">Cajón 2</div>
+              <div class="slot-status">Libre</div>
+            </div>
+          </div>
+
+          <div class="barrier exit-barrier">
+            <div class="barrier-label">SALIDA</div>
+            <div class="barrier-arm" id="barrierExit"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- INFORMACIÓN DEL SISTEMA -->
+      <section class="panel info-panel">
+        <h2>ℹ️ Información del Sistema</h2>
+        <div class="sistema-grid">
+          <div class="info-item">
+            <strong>Estado:</strong>
+            <p id="estadoSistema">Iniciando...</p>
+          </div>
+          <div class="info-item">
+            <strong>Versión Firmware:</strong>
+            <p id="fwVersion">v1.0.0</p>
+          </div>
+          <div class="info-item">
+            <strong>Uptime (horas):</strong>
+            <p id="uptime">--</p>
+          </div>
+          <div class="info-item">
+            <strong>Temperatura (°C):</strong>
+            <p id="tempSistema">--</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      <p>&copy; 2025 Estacionamiento Inteligente | Proyecto Embebidos</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

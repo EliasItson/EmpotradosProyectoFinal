@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Estacionamiento Inteligente</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Estacionamiento Inteligente</h1>
+
+  <div id="estado">
+    <h2>Estado Actual</h2>
+    <p id="rfid">RFID: --</p>
+    <p id="distancia">Distancia: -- cm</p>
+    <p id="plumaEntrada">Pluma Entrada: --</p>
+    <p id="plumaSalida">Pluma Salida: --</p>
+    <p id="cajon1">Cajón 1: --</p>
+    <p id="cajon2">Cajón 2: --</p>
+  </div>
+
+  <div id="configuracion">
+    <h2>Parámetros Configurables</h2>
+    <label>Tiempo apertura pluma (ms):
+      <input type="number" id="tiempoPluma">
+    </label>
+    <label>Delay pluma salida (ms):
+      <input type="number" id="delaySalida">
+    </label>
+    <button onclick="guardarParametros()">Guardar</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
