@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <Servo.h>
 #include <MFRC522.h>
 #include <SPI.h>
@@ -10,37 +11,38 @@
 
 // ==================== VARIABLES GLOBALES ====================
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
-LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
+Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
 Servo barrierServoEntry;
 Servo barrierServoExit;
 
-bool slotOccupied[SLOTS_COUNT] = {false, false, false, false};
+bool slotOccupied[SLOTS_COUNT] = {false, false};
 bool entranceBarrierRaised = false;
 bool exitBarrierRaised = false;
 bool deniedMessageActive = false;
 bool authorizedMessageActive = false;
+bool timeoutMessageActive = false;
 
 noDelay rfidTimer(RFID_COOLDOWN);
 noDelay ultrasonicTimer(ULTRASONIC_CHECK_INTERVAL);
 noDelay servoTimer(SERVO_TRANSITION_TIME);
-noDelay displayMessageTimer(3000);
-noDelay successMessageTimer(2000);
-noDelay barrierTimeoutTimer(BARRIER_TIMEOUT);
-noDelay buzzerOnTimer(200);
-noDelay buzzerOffTimer(100);
+noDelay displayMessageTimer(DISPLAY_MESSAGE_MS);
+noDelay successMessageTimer(SUCCESS_MESSAGE_MS);
 
-// Secuencia de salida (timers)
 noDelay exitRaiseTimer(EXIT_RAISE_MS);
 noDelay exitLowerTimer(EXIT_LOWER_MS);
 bool exitSequenceActive = false;
-int exitPhase = 0; // 0 = idle, 1 = waiting to raise, 2 = waiting to lower
+int exitPhase = 0; // 0 = INACTIVO, 1 = ESPERANDO PARA SUBIR, 2 = ESPERANDO PARA BAJAR
 
-bool buzzerPlaying = false;
-int buzzerBeepCount = 0;
-int buzzerBeepsNeeded = 0;
-bool buzzerPhaseOn = false;
-int buzzerOnDuration = 200;
-int buzzerOffDuration = 100;
+// Timeout: si no detecta auto, baja	barrera y cancela acceso
+noDelay ultrasonicNoCarTimer(ULTRASONIC_TIMEOUT_MS); 
+// Esperar antes de bajar
+noDelay lowerBarrierWaitTimer(LOWER_BARRIER_WAIT_MS); 
+// Flag: el auto fue detectado alguna vez
+bool carDetectedRecently = false; 
+// Flag: el auto está siendo detectado ahora
+bool carCurrentlyDetected = false; 
+// 0 = INACTIVO, 1 = ESPERANDO CARRO, 2 = ESPERANDO QUE PASE CARRO, 3 = BAJANDO
+int entranceBarrierPhase = 0; 
 
 int availableSlots = SLOTS_COUNT;
 // Reservas temporales por accesos concedidos que aún no se han estacionado
@@ -62,9 +64,6 @@ void raiseExitBarrier();
 void lowerExitBarrier();
 void checkParkingSlots();
 void updateLED(int slot, bool occupied);
-void playWelcomeSound();
-void playDeniedSound();
-void updateBuzzer();
 void displayMessage(String line1, String line2 = "");
 void clearDisplay();
 void updateBarrierLogic();
@@ -72,17 +71,23 @@ void updateDisplayLogic();
 void displayAvailableSlots();
 
 void setup() {
-	Serial.begin(115200);
+	Serial.begin(SERIAL_BAUD);
 	setupSensors();
 	setupActuators();
-	lcd.init();
-	lcd.backlight();
+	// Inicializar I2C explícitamente con pines definidos en config.h
+	Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+	// Inicializar pantalla SSD1306
+	if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+		Serial.println("SSD1306 allocation failed");
+		for (;;) delay(10);
+	}
+	display.clearDisplay();
+	display.display();
 	// Mostrar estado inicial con contador de espacios disponibles
 	displayAvailableSlots();
 }
 
 void loop() {
-	updateBuzzer();
 	updateBarrierLogic();
 	updateDisplayLogic();
 	checkRFID();
@@ -97,8 +102,6 @@ void setupSensors() {
 	pinMode(SENSOR_ULTRASONIC_ECHO, INPUT);
 	pinMode(SWITCH_SLOT1, INPUT_PULLUP);
 	pinMode(SWITCH_SLOT2, INPUT_PULLUP);
-	pinMode(SWITCH_SLOT3, INPUT_PULLUP);
-	pinMode(SWITCH_SLOT4, INPUT_PULLUP);
 }
 
 void setupActuators() {
@@ -110,10 +113,6 @@ void setupActuators() {
 	exitBarrierRaised = false;
 	pinMode(LED_RED_SLOT1, OUTPUT);
 	pinMode(LED_RED_SLOT2, OUTPUT);
-	pinMode(LED_RED_SLOT3, OUTPUT);
-	pinMode(LED_RED_SLOT4, OUTPUT);
-	pinMode(BUZZER_PIN, OUTPUT);
-	digitalWrite(BUZZER_PIN, LOW);
 }
 
 void checkRFID() {
@@ -147,7 +146,6 @@ void handleAuthorizedUser() {
 	// Verificar disponibilidad antes de conceder acceso
 	if (availableSlots <= 0) {
 		displayMessage(MSG_FULL_1, MSG_FULL_2);
-		playDeniedSound();
 		displayMessageTimer.start();
 		deniedMessageActive = true;
 		return;
@@ -156,27 +154,73 @@ void handleAuthorizedUser() {
 	// Crear una reserva temporal: decremento real ocurrirá cuando el usuario
 	// confirme ocupación presionando el switch del cajón.
 	pendingEntries++;
+	Serial.println("[RFID] Tarjeta válida. Levantando pluma y esperando auto...");
 	displayMessage(MSG_WELCOME_1, MSG_WELCOME_2);
-	playWelcomeSound();
 	raiseEntranceBarrier();
-	barrierTimeoutTimer.start();
+	// Iniciar la lógica de espera: o detecta auto, o timeout en 10s
+	entranceBarrierPhase = 1; // Esperar a que el auto pase
+	carDetectedRecently = false;
+	carCurrentlyDetected = false;
+	ultrasonicNoCarTimer.start();
 	successMessageTimer.start();
 	authorizedMessageActive = true;
 }
 
 void handleUnauthorizedUser() {
-	displayMessage("ACCESO", "DENEGADO");
-	playDeniedSound();
+	displayMessage(MSG_DENIED_1, MSG_DENIED_2);
 	displayMessageTimer.start();
 	deniedMessageActive = true;
 }
 
 void checkUltrasonicSensor() {
-	if (!entranceBarrierRaised) return;
+	if (!entranceBarrierRaised || entranceBarrierPhase == 0) return;
 	if (!ultrasonicTimer.update()) return;
-	unsigned long duration = pulseIn(SENSOR_ULTRASONIC_ECHO, HIGH, 30000);
+	
+	// Generar pulso en TRIG
+	digitalWrite(SENSOR_ULTRASONIC_TRIG, LOW);
+	delayMicroseconds(ULTRASONIC_TRIG_PREP_US);
+	digitalWrite(SENSOR_ULTRASONIC_TRIG, HIGH);
+	delayMicroseconds(ULTRASONIC_TRIG_PULSE_US);
+	digitalWrite(SENSOR_ULTRASONIC_TRIG, LOW);
+
+	// Leer duración del pulso en ECHO
+	unsigned long duration = pulseIn(SENSOR_ULTRASONIC_ECHO, HIGH, ULTRASONIC_PULSE_TIMEOUT_US);
+	
+	// Convertir duración a distancia (cm)
 	float distance = duration * ULTRASONIC_FACTOR / 2;
-	if (distance > ULTRASONIC_THRESHOLD) { lowerEntranceBarrier(); displayMessage(MSG_PASS_1, MSG_PASS_2); successMessageTimer.start(); }
+	
+	Serial.printf("[US] Duration: %lu us | Distancia: %f cm\n", duration, distance);
+	
+	// Validar que la distancia sea razonable (entre 2cm y 400cm)
+	if (distance < 2 || distance > 400) {
+		Serial.printf("[US] Lectura inválida: %f cm\n", distance);
+		return;
+	}
+	
+	bool carDetected = (distance < ULTRASONIC_THRESHOLD); // < 30cm = bloqueado = hay auto
+	
+	Serial.printf("[US] Distancia: %f cm | Detectado: %d | Fase: %d\n", distance, carDetected, entranceBarrierPhase);
+	
+	if (entranceBarrierPhase == 1) {
+		// Esperando a que el auto pase
+		if (carDetected) {
+			// Auto detectado (bloqueando sensor)
+			if (!carCurrentlyDetected) {
+				carCurrentlyDetected = true;
+				carDetectedRecently = true;
+				Serial.println("[US] Auto detectado: sensor bloqueado");
+			}
+			// Resetear timeout mientras el auto esté siendo detectado
+			ultrasonicNoCarTimer.start();
+		}
+		if (!carDetected && carCurrentlyDetected && carDetectedRecently) {
+			// Auto pasó: se detectó antes (estaba bloqueado), ahora se fue (desbloqueado)
+			carCurrentlyDetected = false;
+			entranceBarrierPhase = 3; // Bajar después de 1s
+			lowerBarrierWaitTimer.start();
+			Serial.println("[US] Auto pasó: sensor desbloqueado. Bajando pluma...");
+		}
+	}
 }
 
 void raiseEntranceBarrier() { barrierServoEntry.write(SERVO_ANGLE_UP); entranceBarrierRaised = true; servoTimer.start(); }
@@ -186,7 +230,7 @@ void raiseExitBarrier() { barrierServoExit.write(SERVO_ANGLE_UP); exitBarrierRai
 void lowerExitBarrier() { barrierServoExit.write(SERVO_ANGLE_DOWN); exitBarrierRaised = false; servoTimer.start(); }
 
 void checkParkingSlots() {
-	int slots[SLOTS_COUNT] = {SWITCH_SLOT1, SWITCH_SLOT2, SWITCH_SLOT3, SWITCH_SLOT4};
+	int slots[SLOTS_COUNT] = {SWITCH_SLOT1, SWITCH_SLOT2};
 	for (int i = 0; i < SLOTS_COUNT; i++) {
 		bool pressed = (digitalRead(slots[i]) == LOW);
 		// Entrada al cajón (usuario acaba de estacionar)
@@ -203,6 +247,10 @@ void checkParkingSlots() {
 			}
 			if (availableSlots < 0) availableSlots = 0;
 			Serial.printf("Cajon %d - OCUPADO. Disponibles: %d\n", i + 1, availableSlots);
+			// Actualizar contador en pantalla si no hay mensajes temporales activos
+			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive) {
+				displayAvailableSlots();
+			}
 		}
 		// Salida del cajón (usuario marcó que desocupó)
 		else if (!pressed && slotOccupied[i]) {
@@ -210,6 +258,10 @@ void checkParkingSlots() {
 			updateLED(i, false);
 			availableSlots++;
 			Serial.printf("Cajon %d - DISPONIBLE. Disponibles: %d\n", i + 1, availableSlots);
+			// Actualizar contador en pantalla si no hay mensajes temporales activos
+			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive) {
+				displayAvailableSlots();
+			}
 			// Iniciar secuencia de salida que levanta la pluma y luego la baja
 			exitSequenceActive = true;
 			exitPhase = 1;
@@ -219,20 +271,49 @@ void checkParkingSlots() {
 }
 
 void updateLED(int slot, bool occupied) {
-	int leds[4] = {LED_RED_SLOT1, LED_RED_SLOT2, LED_RED_SLOT3, LED_RED_SLOT4};
+	int leds[SLOTS_COUNT] = {LED_RED_SLOT1, LED_RED_SLOT2};
 	digitalWrite(leds[slot], occupied ? HIGH : LOW);
 }
 
-void displayMessage(String line1, String line2) { lcd.clear(); lcd.setCursor(0,0); lcd.print(line1); if (line2.length()) { lcd.setCursor(0,1); lcd.print(line2); } }
-void clearDisplay() { lcd.clear(); }
+void displayMessage(String line1, String line2) {
+	display.clearDisplay();
+	display.setTextSize(1);
+	display.setTextColor(SSD1306_WHITE);
+	display.setCursor(0, 0);
+	display.print(line1);
+	if (line2.length()) {
+		// second line starting a bit lower (10 px)
+		display.setCursor(0, 12);
+		display.print(line2);
+	}
+	display.display();
+}
+void clearDisplay() { display.clearDisplay(); display.display(); }
 
 // Extensión: manejar la secuencia de salida (timers) además del timeout
 void updateBarrierLogic() {
 	// Lógica para pluma de entrada
-	if (entranceBarrierRaised && barrierTimeoutTimer.update()) {
-		lowerEntranceBarrier();
-		displayMessage("Timeout","Barra bajada");
-		successMessageTimer.start();
+	if (entranceBarrierRaised && entranceBarrierPhase > 0) {
+		// Fase 1: esperando a que pase el auto (timeout 10s - esperar más tiempo a detección real)
+		if (entranceBarrierPhase == 1 && ultrasonicNoCarTimer.update()) {
+			// Timeout: no se detectó auto en 10s, bajar pluma
+			entranceBarrierPhase = 3;
+			lowerBarrierWaitTimer.start();
+			Serial.println("[TIMEOUT] No se detectó auto. Bajando pluma...");
+			// Mostrar mensaje distinto cuando nunca se detectó el auto
+			displayMessage(MSG_TIMEOUT_1, MSG_TIMEOUT_2);
+			displayMessageTimer.start();
+			timeoutMessageActive = true;
+		}
+		// Fase 3: esperar 1s antes de bajar
+		if (entranceBarrierPhase == 3 && lowerBarrierWaitTimer.update()) {
+			lowerEntranceBarrier();
+			entranceBarrierPhase = 0;
+			// Mostrar mensaje de paso y activar el flag para que se restaure luego
+			displayMessage(MSG_PASS_1, MSG_PASS_2);
+			authorizedMessageActive = true;
+			successMessageTimer.start();
+		}
 	}
 
 	// Secuencia de salida (usa la pluma de salida)
@@ -260,9 +341,14 @@ void updateDisplayLogic() {
 		// Restaurar pantalla por defecto con contador
 		displayAvailableSlots();
 	}
+	if (timeoutMessageActive && displayMessageTimer.update()) {
+		timeoutMessageActive = false;
+		// Restaurar pantalla por defecto con contador
+		displayAvailableSlots();
+	}
 }
 
-// Muestra en el LCD la cantidad de espacios disponibles cuando no hay mensajes
+// Muestra en el OLED la cantidad de espacios disponibles cuando no hay mensajes
 void displayAvailableSlots() {
 	String line2 = String("Disp: ") + String(availableSlots);
 	// Asegurar que la línea tiene máximo 16 caracteres
@@ -270,38 +356,4 @@ void displayAvailableSlots() {
 	displayMessage(MSG_READY_1, line2);
 }
 
-void playWelcomeSound() {
-	buzzerBeepsNeeded = WELCOME_BEEPS;
-	buzzerBeepCount = 0;
-	buzzerPlaying = true;
-	buzzerPhaseOn = true;
-	buzzerOnDuration = WELCOME_BEEP_DURATION;
-	buzzerOffDuration = WELCOME_BEEP_PAUSE;
-	buzzerOnTimer.start();
-	digitalWrite(BUZZER_PIN, HIGH);
-}
-
-void playDeniedSound() {
-	buzzerBeepsNeeded = DENIED_BEEPS;
-	buzzerBeepCount = 0;
-	buzzerPlaying = true;
-	buzzerPhaseOn = true;
-	buzzerOnDuration = DENIED_BEEP_DURATION;
-	buzzerOffDuration = DENIED_BEEP_PAUSE;
-	buzzerOnTimer.start();
-	digitalWrite(BUZZER_PIN, HIGH);
-}
-
-void updateBuzzer() {
-	if (!buzzerPlaying) return;
-	if (buzzerPhaseOn) {
-		if (buzzerOnTimer.update()) { digitalWrite(BUZZER_PIN, LOW); buzzerPhaseOn = false; buzzerOffTimer.start(); }
-	} else {
-		if (buzzerOffTimer.update()) {
-			buzzerBeepCount++;
-			if (buzzerBeepCount < buzzerBeepsNeeded) { digitalWrite(BUZZER_PIN, HIGH); buzzerPhaseOn = true; buzzerOnTimer.start(); }
-			else { buzzerPlaying = false; digitalWrite(BUZZER_PIN, LOW); }
-		}
-	}
-}
 
