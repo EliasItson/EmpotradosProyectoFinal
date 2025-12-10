@@ -8,6 +8,10 @@
 #include <NoDelay.h>
 
 #include "config.h"
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+#include <LittleFS.h>
 
 // ==================== VARIABLES GLOBALES ====================
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
@@ -32,17 +36,21 @@ noDelay exitRaiseTimer(EXIT_RAISE_MS);
 noDelay exitLowerTimer(EXIT_LOWER_MS);
 bool exitSequenceActive = false;
 int exitPhase = 0; // 0 = INACTIVO, 1 = ESPERANDO PARA SUBIR, 2 = ESPERANDO PARA BAJAR
+// Variables para temporización dinámica de la pluma de salida
+unsigned long exitLowerStartMillis = 0;
+bool exitLowerWaiting = false;
+// (entrance timing uses lowerBarrierWaitTimer - no dynamic vars here)
 
 // Timeout: si no detecta auto, baja	barrera y cancela acceso
-noDelay ultrasonicNoCarTimer(ULTRASONIC_TIMEOUT_MS); 
+noDelay ultrasonicNoCarTimer(ULTRASONIC_TIMEOUT_MS);
 // Esperar antes de bajar
-noDelay lowerBarrierWaitTimer(LOWER_BARRIER_WAIT_MS); 
+noDelay lowerBarrierWaitTimer(LOWER_BARRIER_WAIT_MS);
 // Flag: el auto fue detectado alguna vez
-bool carDetectedRecently = false; 
+bool carDetectedRecently = false;
 // Flag: el auto está siendo detectado ahora
-bool carCurrentlyDetected = false; 
+bool carCurrentlyDetected = false;
 // 0 = INACTIVO, 1 = ESPERANDO CARRO, 2 = ESPERANDO QUE PASE CARRO, 3 = BAJANDO
-int entranceBarrierPhase = 0; 
+int entranceBarrierPhase = 0;
 
 int availableSlots = SLOTS_COUNT;
 // Reservas temporales por accesos concedidos que aún no se han estacionado
@@ -70,24 +78,81 @@ void updateBarrierLogic();
 void updateDisplayLogic();
 void displayAvailableSlots();
 
-void setup() {
+// Web server / FS
+WebServer server(80);
+
+// Últimos valores para exponer por la API
+String latestRFIDUID = "--";
+float lastDistance = 0.0;
+
+// Parámetros configurables (valores por defecto tomados de config.h)
+int TIEMPO_APERTURA_MS = SERVO_TRANSITION_TIME;
+int SALIDA_DELAY_MS = EXIT_RAISE_MS;
+
+// Funciones de FS / API
+bool initFileSystem();
+void setupWebServer();
+void handle_getStatus();
+void handle_getParams();
+void handle_setParams();
+void loadParamsFromFS();
+void saveParamsToFS();
+
+void setup()
+{
 	Serial.begin(SERIAL_BAUD);
 	setupSensors();
 	setupActuators();
 	// Inicializar I2C explícitamente con pines definidos en config.h
 	Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 	// Inicializar pantalla SSD1306
-	if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+	if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR))
+	{
 		Serial.println("SSD1306 allocation failed");
-		for (;;) delay(10);
+		for (;;)
+			delay(10);
 	}
 	display.clearDisplay();
 	display.display();
 	// Mostrar estado inicial con contador de espacios disponibles
 	displayAvailableSlots();
+
+	// Inicializar WiFi en modo STA (Station)
+	Serial.println("Conectando a WiFi...");
+	WiFi.mode(WIFI_STA);
+	WiFi.begin("Elias", "babababa");
+
+	// Esperar a que se conecte (máximo 20 segundos)
+	int wifiAttempts = 0;
+	while (WiFi.status() != WL_CONNECTED && wifiAttempts < 40)
+	{
+		delay(500);
+		Serial.print(".");
+		wifiAttempts++;
+	}
+
+	if (WiFi.status() == WL_CONNECTED)
+	{
+		Serial.println();
+		Serial.print("WiFi conectado. IP: ");
+		Serial.println(WiFi.localIP());
+	}
+	else
+	{
+		Serial.println();
+		Serial.println("Error: No se pudo conectar a WiFi. Continuando sin conexión...");
+	}
+
+	// Inicializar servidor web
+	setupWebServer();
+	server.begin();
+	Serial.print("Web server iniciado en http://");
+	Serial.println(WiFi.localIP());
 }
 
-void loop() {
+void loop()
+{
+	server.handleClient();
 	updateBarrierLogic();
 	updateDisplayLogic();
 	checkRFID();
@@ -95,7 +160,8 @@ void loop() {
 	checkParkingSlots();
 }
 
-void setupSensors() {
+void setupSensors()
+{
 	SPI.begin();
 	rfid.PCD_Init();
 	pinMode(SENSOR_ULTRASONIC_TRIG, OUTPUT);
@@ -104,7 +170,8 @@ void setupSensors() {
 	pinMode(SWITCH_SLOT2, INPUT_PULLUP);
 }
 
-void setupActuators() {
+void setupActuators()
+{
 	barrierServoEntry.attach(SERVO_ENTRY_PIN);
 	barrierServoExit.attach(SERVO_EXIT_PIN);
 	barrierServoEntry.write(SERVO_ANGLE_DOWN);
@@ -115,36 +182,52 @@ void setupActuators() {
 	pinMode(LED_RED_SLOT2, OUTPUT);
 }
 
-void checkRFID() {
-	if (!rfidTimer.update()) return;
-	if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+void checkRFID()
+{
+	if (!rfidTimer.update())
+		return;
+	if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial())
+		return;
 	String cardUID = getCardUID();
-	if (isCardAuthorized(cardUID)) handleAuthorizedUser(); else handleUnauthorizedUser();
+	latestRFIDUID = cardUID;
+	if (isCardAuthorized(cardUID))
+		handleAuthorizedUser();
+	else
+		handleUnauthorizedUser();
 	rfid.PICC_HaltA();
 	rfid.PCD_StopCrypto1();
 }
 
-String getCardUID() {
+String getCardUID()
+{
 	String uid = "";
-	for (int i = 0; i < rfid.uid.size; i++) {
-		if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+	for (int i = 0; i < rfid.uid.size; i++)
+	{
+		if (rfid.uid.uidByte[i] < 0x10)
+			uid += "0";
 		uid += String(rfid.uid.uidByte[i], HEX);
-		if (i < rfid.uid.size - 1) uid += ":";
+		if (i < rfid.uid.size - 1)
+			uid += ":";
 	}
 	uid.toUpperCase();
 	return uid;
 }
 
-bool isCardAuthorized(String cardUID) {
-	for (int i = 0; i < AUTHORIZED_CARDS_COUNT; i++) {
-		if (cardUID.equalsIgnoreCase(String(AUTHORIZED_CARDS[i]))) return true;
+bool isCardAuthorized(String cardUID)
+{
+	for (int i = 0; i < AUTHORIZED_CARDS_COUNT; i++)
+	{
+		if (cardUID.equalsIgnoreCase(String(AUTHORIZED_CARDS[i])))
+			return true;
 	}
 	return false;
 }
 
-void handleAuthorizedUser() {
+void handleAuthorizedUser()
+{
 	// Verificar disponibilidad antes de conceder acceso
-	if (availableSlots <= 0) {
+	if (availableSlots <= 0)
+	{
 		displayMessage(MSG_FULL_1, MSG_FULL_2);
 		displayMessageTimer.start();
 		deniedMessageActive = true;
@@ -166,16 +249,20 @@ void handleAuthorizedUser() {
 	authorizedMessageActive = true;
 }
 
-void handleUnauthorizedUser() {
+void handleUnauthorizedUser()
+{
 	displayMessage(MSG_DENIED_1, MSG_DENIED_2);
 	displayMessageTimer.start();
 	deniedMessageActive = true;
 }
 
-void checkUltrasonicSensor() {
-	if (!entranceBarrierRaised || entranceBarrierPhase == 0) return;
-	if (!ultrasonicTimer.update()) return;
-	
+void checkUltrasonicSensor()
+{
+	if (!entranceBarrierRaised || entranceBarrierPhase == 0)
+		return;
+	if (!ultrasonicTimer.update())
+		return;
+
 	// Generar pulso en TRIG
 	digitalWrite(SENSOR_ULTRASONIC_TRIG, LOW);
 	delayMicroseconds(ULTRASONIC_TRIG_PREP_US);
@@ -185,27 +272,33 @@ void checkUltrasonicSensor() {
 
 	// Leer duración del pulso en ECHO
 	unsigned long duration = pulseIn(SENSOR_ULTRASONIC_ECHO, HIGH, ULTRASONIC_PULSE_TIMEOUT_US);
-	
+
 	// Convertir duración a distancia (cm)
 	float distance = duration * ULTRASONIC_FACTOR / 2;
-	
+
 	Serial.printf("[US] Duration: %lu us | Distancia: %f cm\n", duration, distance);
-	
+
+	lastDistance = distance;
+
 	// Validar que la distancia sea razonable (entre 2cm y 400cm)
-	if (distance < 2 || distance > 400) {
+	if (distance < 2 || distance > 400)
+	{
 		Serial.printf("[US] Lectura inválida: %f cm\n", distance);
 		return;
 	}
-	
+
 	bool carDetected = (distance < ULTRASONIC_THRESHOLD); // < 30cm = bloqueado = hay auto
-	
+
 	Serial.printf("[US] Distancia: %f cm | Detectado: %d | Fase: %d\n", distance, carDetected, entranceBarrierPhase);
-	
-	if (entranceBarrierPhase == 1) {
+
+	if (entranceBarrierPhase == 1)
+	{
 		// Esperando a que el auto pase
-		if (carDetected) {
+		if (carDetected)
+		{
 			// Auto detectado (bloqueando sensor)
-			if (!carCurrentlyDetected) {
+			if (!carCurrentlyDetected)
+			{
 				carCurrentlyDetected = true;
 				carDetectedRecently = true;
 				Serial.println("[US] Auto detectado: sensor bloqueado");
@@ -213,7 +306,8 @@ void checkUltrasonicSensor() {
 			// Resetear timeout mientras el auto esté siendo detectado
 			ultrasonicNoCarTimer.start();
 		}
-		if (!carDetected && carCurrentlyDetected && carDetectedRecently) {
+		if (!carDetected && carCurrentlyDetected && carDetectedRecently)
+		{
 			// Auto pasó: se detectó antes (estaba bloqueado), ahora se fue (desbloqueado)
 			carCurrentlyDetected = false;
 			entranceBarrierPhase = 3; // Bajar después de 1s
@@ -223,43 +317,75 @@ void checkUltrasonicSensor() {
 	}
 }
 
-void raiseEntranceBarrier() { barrierServoEntry.write(SERVO_ANGLE_UP); entranceBarrierRaised = true; servoTimer.start(); }
-void lowerEntranceBarrier() { barrierServoEntry.write(SERVO_ANGLE_DOWN); entranceBarrierRaised = false; servoTimer.start(); }
+void raiseEntranceBarrier()
+{
+	barrierServoEntry.write(SERVO_ANGLE_UP);
+	entranceBarrierRaised = true;
+	servoTimer.start();
+}
+void lowerEntranceBarrier()
+{
+	barrierServoEntry.write(SERVO_ANGLE_DOWN);
+	entranceBarrierRaised = false;
+	servoTimer.start();
+}
 
-void raiseExitBarrier() { barrierServoExit.write(SERVO_ANGLE_UP); exitBarrierRaised = true; servoTimer.start(); }
-void lowerExitBarrier() { barrierServoExit.write(SERVO_ANGLE_DOWN); exitBarrierRaised = false; servoTimer.start(); }
+void raiseExitBarrier()
+{
+	barrierServoExit.write(SERVO_ANGLE_UP);
+	exitBarrierRaised = true;
+	servoTimer.start();
+}
+void lowerExitBarrier()
+{
+	barrierServoExit.write(SERVO_ANGLE_DOWN);
+	exitBarrierRaised = false;
+	servoTimer.start();
+}
 
-void checkParkingSlots() {
+void checkParkingSlots()
+{
 	int slots[SLOTS_COUNT] = {SWITCH_SLOT1, SWITCH_SLOT2};
-	for (int i = 0; i < SLOTS_COUNT; i++) {
+	for (int i = 0; i < SLOTS_COUNT; i++)
+	{
 		bool pressed = (digitalRead(slots[i]) == LOW);
 		// Entrada al cajón (usuario acaba de estacionar)
-		if (pressed && !slotOccupied[i]) {
+		if (pressed && !slotOccupied[i])
+		{
 			slotOccupied[i] = true;
 			updateLED(i, true);
 			// Si hay reservas pendientes, asociar una a esta ocupación.
-			if (pendingEntries > 0) {
+			if (pendingEntries > 0)
+			{
 				pendingEntries--;
-				if (availableSlots > 0) availableSlots--;
-			} else {
-				// Ocupación manual sin reserva previa
-				if (availableSlots > 0) availableSlots--;
+				if (availableSlots > 0)
+					availableSlots--;
 			}
-			if (availableSlots < 0) availableSlots = 0;
+			else
+			{
+				// Ocupación manual sin reserva previa
+				if (availableSlots > 0)
+					availableSlots--;
+			}
+			if (availableSlots < 0)
+				availableSlots = 0;
 			Serial.printf("Cajon %d - OCUPADO. Disponibles: %d\n", i + 1, availableSlots);
 			// Actualizar contador en pantalla si no hay mensajes temporales activos
-			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive) {
+			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive)
+			{
 				displayAvailableSlots();
 			}
 		}
 		// Salida del cajón (usuario marcó que desocupó)
-		else if (!pressed && slotOccupied[i]) {
+		else if (!pressed && slotOccupied[i])
+		{
 			slotOccupied[i] = false;
 			updateLED(i, false);
 			availableSlots++;
 			Serial.printf("Cajon %d - DISPONIBLE. Disponibles: %d\n", i + 1, availableSlots);
 			// Actualizar contador en pantalla si no hay mensajes temporales activos
-			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive) {
+			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive)
+			{
 				displayAvailableSlots();
 			}
 			// Iniciar secuencia de salida que levanta la pluma y luego la baja
@@ -270,32 +396,42 @@ void checkParkingSlots() {
 	}
 }
 
-void updateLED(int slot, bool occupied) {
+void updateLED(int slot, bool occupied)
+{
 	int leds[SLOTS_COUNT] = {LED_RED_SLOT1, LED_RED_SLOT2};
 	digitalWrite(leds[slot], occupied ? HIGH : LOW);
 }
 
-void displayMessage(String line1, String line2) {
+void displayMessage(String line1, String line2)
+{
 	display.clearDisplay();
 	display.setTextSize(1);
 	display.setTextColor(SSD1306_WHITE);
 	display.setCursor(0, 0);
 	display.print(line1);
-	if (line2.length()) {
+	if (line2.length())
+	{
 		// second line starting a bit lower (10 px)
 		display.setCursor(0, 12);
 		display.print(line2);
 	}
 	display.display();
 }
-void clearDisplay() { display.clearDisplay(); display.display(); }
+void clearDisplay()
+{
+	display.clearDisplay();
+	display.display();
+}
 
 // Extensión: manejar la secuencia de salida (timers) además del timeout
-void updateBarrierLogic() {
+void updateBarrierLogic()
+{
 	// Lógica para pluma de entrada
-	if (entranceBarrierRaised && entranceBarrierPhase > 0) {
+	if (entranceBarrierRaised && entranceBarrierPhase > 0)
+	{
 		// Fase 1: esperando a que pase el auto (timeout 10s - esperar más tiempo a detección real)
-		if (entranceBarrierPhase == 1 && ultrasonicNoCarTimer.update()) {
+		if (entranceBarrierPhase == 1 && ultrasonicNoCarTimer.update())
+		{
 			// Timeout: no se detectó auto en 10s, bajar pluma
 			entranceBarrierPhase = 3;
 			lowerBarrierWaitTimer.start();
@@ -306,7 +442,8 @@ void updateBarrierLogic() {
 			timeoutMessageActive = true;
 		}
 		// Fase 3: esperar 1s antes de bajar
-		if (entranceBarrierPhase == 3 && lowerBarrierWaitTimer.update()) {
+		if (entranceBarrierPhase == 3 && lowerBarrierWaitTimer.update())
+		{
 			lowerEntranceBarrier();
 			entranceBarrierPhase = 0;
 			// Mostrar mensaje de paso y activar el flag para que se restaure luego
@@ -317,31 +454,42 @@ void updateBarrierLogic() {
 	}
 
 	// Secuencia de salida (usa la pluma de salida)
-	if (exitSequenceActive) {
-		if (exitPhase == 1 && exitRaiseTimer.update()) {
+	if (exitSequenceActive)
+	{
+		if (exitPhase == 1 && exitRaiseTimer.update())
+		{
 			raiseExitBarrier();
 			// ahora esperamos para bajar
 			exitPhase = 2;
-			exitLowerTimer.start();
-		} else if (exitPhase == 2 && exitLowerTimer.update()) {
+			// iniciar temporizador dinámico usando SALIDA_DELAY_MS
+			exitLowerStartMillis = millis();
+			exitLowerWaiting = true;
+		}
+		else if (exitPhase == 2 && exitLowerWaiting && (millis() - exitLowerStartMillis >= (unsigned long)SALIDA_DELAY_MS))
+		{
 			lowerExitBarrier();
 			exitSequenceActive = false;
 			exitPhase = 0;
+			exitLowerWaiting = false;
 		}
 	}
 }
-void updateDisplayLogic() {
-	if (deniedMessageActive && displayMessageTimer.update()) {
+void updateDisplayLogic()
+{
+	if (deniedMessageActive && displayMessageTimer.update())
+	{
 		deniedMessageActive = false;
 		// Restaurar pantalla por defecto con contador
 		displayAvailableSlots();
 	}
-	if (authorizedMessageActive && successMessageTimer.update()) {
+	if (authorizedMessageActive && successMessageTimer.update())
+	{
 		authorizedMessageActive = false;
 		// Restaurar pantalla por defecto con contador
 		displayAvailableSlots();
 	}
-	if (timeoutMessageActive && displayMessageTimer.update()) {
+	if (timeoutMessageActive && displayMessageTimer.update())
+	{
 		timeoutMessageActive = false;
 		// Restaurar pantalla por defecto con contador
 		displayAvailableSlots();
@@ -349,11 +497,216 @@ void updateDisplayLogic() {
 }
 
 // Muestra en el OLED la cantidad de espacios disponibles cuando no hay mensajes
-void displayAvailableSlots() {
+void displayAvailableSlots()
+{
 	String line2 = String("Disp: ") + String(availableSlots);
 	// Asegurar que la línea tiene máximo 16 caracteres
-	if (line2.length() > 16) line2 = line2.substring(0, 16);
+	if (line2.length() > 16)
+		line2 = line2.substring(0, 16);
 	displayMessage(MSG_READY_1, line2);
 }
 
+// ------------------------- LittleFS y WebServer -------------------------
 
+bool initFileSystem()
+{
+	if (!LittleFS.begin())
+	{
+		Serial.println("LittleFS mount failed, attempting format...");
+		if (LittleFS.format())
+		{
+			Serial.println("LittleFS formatted, attempting mount again...");
+			if (!LittleFS.begin())
+			{
+				Serial.println("LittleFS mount failed after format");
+				return false;
+			}
+		}
+		else
+		{
+			Serial.println("LittleFS format failed");
+			return false;
+		}
+	}
+	Serial.println("LittleFS mounted");
+	return true;
+}
+
+void setupWebServer()
+{
+	// Servir página principal con HTML/CSS/JS inline
+	server.on("/", HTTP_GET, []()
+			  {
+		String html = "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n";
+		html += "  <meta charset=\"UTF-8\">\n";
+		html += "  <title>Estacionamiento Inteligente</title>\n";
+		html += "  <style>\n";
+		html += "    body { font-family: Arial, sans-serif; background-color: #f0f0f0; padding: 20px; }\n";
+		html += "    h1, h2 { text-align: center; }\n";
+		html += "    #estado, #configuracion { background-color: #fff; padding: 15px; margin: 15px auto; border-radius: 10px; width: 300px; box-shadow: 0 0 5px rgba(0,0,0,0.3); }\n";
+		html += "    label { display: block; margin: 10px 0; }\n";
+		html += "    input { width: 100%; padding: 5px; }\n";
+		html += "    button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }\n";
+		html += "    button:hover { background: #0056b3; }\n";
+		html += "    p { margin: 5px 0; }\n";
+		html += "  </style>\n</head>\n<body>\n";
+		html += "  <h1>Estacionamiento Inteligente</h1>\n";
+		html += "  <div id=\"estado\">\n";
+		html += "    <h2>Estado Actual</h2>\n";
+		html += "    <p id=\"rfid\">RFID: --</p>\n";
+		html += "    <p id=\"distancia\">Distancia: -- cm</p>\n";
+		html += "    <p id=\"plumaEntrada\">Pluma Entrada: --</p>\n";
+		html += "    <p id=\"plumaSalida\">Pluma Salida: --</p>\n";
+		html += "    <p id=\"cajon1\">Cajón 1: --</p>\n";
+		html += "    <p id=\"cajon2\">Cajón 2: --</p>\n";
+		html += "  </div>\n";
+		html += "  <div id=\"configuracion\">\n";
+		html += "    <h2>Parámetros Configurables</h2>\n";
+		html += "    <label>Tiempo apertura pluma (ms):<input type=\"number\" id=\"tiempoPluma\"></label>\n";
+		html += "    <label>Delay pluma salida (ms):<input type=\"number\" id=\"delaySalida\"></label>\n";
+		html += "    <button onclick=\"guardarParametros()\">Guardar</button>\n";
+		html += "  </div>\n";
+		html += "  <script>\n";
+		html += "    let enfoque = false;\n";
+		html += "    function actualizarEstado() {\n";
+		html += "      fetch(\"/api/getStatus\").then(r=>r.json()).then(d=>{\n";
+		html += "        document.getElementById(\"rfid\").innerText=\"RFID: \"+d.rfidUID;\n";
+		html += "        document.getElementById(\"distancia\").innerText=\"Distancia: \"+d.distancia.toFixed(2)+\" cm\";\n";
+		html += "        document.getElementById(\"plumaEntrada\").innerText=\"Pluma Entrada: \"+(d.plumaEntrada?\"Abierta\":\"Cerrada\");\n";
+		html += "        document.getElementById(\"plumaSalida\").innerText=\"Pluma Salida: \"+(d.plumaSalida?\"Abierta\":\"Cerrada\");\n";
+		html += "        document.getElementById(\"cajon1\").innerText=\"Cajón 1: \"+(d.cajon1?\"Ocupado\":\"Libre\");\n";
+		html += "        document.getElementById(\"cajon2\").innerText=\"Cajón 2: \"+(d.cajon2?\"Ocupado\":\"Libre\");\n";
+		html += "      }).catch(e=>console.error(\"Error:\",e));\n";
+		html += "    }\n";
+		html += "    function actualizarParametros() {\n";
+		html += "      if(!enfoque) {\n";
+		html += "        fetch(\"/api/getParams\").then(r=>r.json()).then(d=>{\n";
+		html += "          document.getElementById(\"tiempoPluma\").value=d.TIEMPO_APERTURA_MS;\n";
+		html += "          document.getElementById(\"delaySalida\").value=d.SALIDA_DELAY_MS;\n";
+		html += "        }).catch(e=>console.error(\"Error:\",e));\n";
+		html += "      }\n";
+		html += "    }\n";
+		html += "    function guardarParametros() {\n";
+		html += "      let p={TIEMPO_APERTURA_MS:parseInt(document.getElementById(\"tiempoPluma\").value),SALIDA_DELAY_MS:parseInt(document.getElementById(\"delaySalida\").value)};\n";
+		html += "      fetch(\"/api/setParams\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify(p)}).then(()=>{alert(\"Guardado\");enfoque=false;actualizarParametros();}).catch(e=>console.error(\"Error:\",e));\n";
+		html += "    }\n";
+		html += "    document.getElementById(\"tiempoPluma\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
+		html += "    document.getElementById(\"tiempoPluma\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
+		html += "    document.getElementById(\"delaySalida\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
+		html += "    document.getElementById(\"delaySalida\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
+		html += "    setInterval(()=>{actualizarEstado();actualizarParametros();},1000);\n";
+		html += "    actualizarEstado();actualizarParametros();\n";
+		html += "  </script>\n</body>\n</html>";
+		server.send(200, "text/html", html); });
+
+	// API endpoints
+	server.on("/api/getStatus", HTTP_GET, handle_getStatus);
+	server.on("/api/getParams", HTTP_GET, handle_getParams);
+	server.on("/api/setParams", HTTP_POST, handle_setParams);
+}
+
+void handle_getStatus()
+{
+	DynamicJsonDocument doc(256);
+	doc["rfidUID"] = latestRFIDUID;
+	doc["distancia"] = lastDistance;
+	doc["plumaEntrada"] = entranceBarrierRaised;
+	doc["plumaSalida"] = exitBarrierRaised;
+	for (int i = 0; i < SLOTS_COUNT; i++)
+	{
+		String key = String("cajon") + String(i + 1);
+		doc[key] = slotOccupied[i];
+	}
+	String out;
+	serializeJson(doc, out);
+	server.send(200, "application/json", out);
+}
+
+void handle_getParams()
+{
+	DynamicJsonDocument doc(256);
+	doc["TIEMPO_APERTURA_MS"] = TIEMPO_APERTURA_MS;
+	doc["SALIDA_DELAY_MS"] = SALIDA_DELAY_MS;
+	String out;
+	serializeJson(doc, out);
+	server.send(200, "application/json", out);
+}
+
+void handle_setParams()
+{
+	if (!server.hasArg("plain"))
+	{
+		server.send(400, "application/json", "{\"error\":\"no body\"}");
+		return;
+	}
+	String body = server.arg("plain");
+	DynamicJsonDocument doc(256);
+	DeserializationError err = deserializeJson(doc, body);
+	if (err)
+	{
+		server.send(400, "application/json", "{\"error\":\"invalid json\"}");
+		return;
+	}
+	if (doc.containsKey("TIEMPO_APERTURA_MS"))
+		TIEMPO_APERTURA_MS = doc["TIEMPO_APERTURA_MS"];
+	if (doc.containsKey("SALIDA_DELAY_MS"))
+		SALIDA_DELAY_MS = doc["SALIDA_DELAY_MS"];
+	saveParamsToFS();
+	server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void loadParamsFromFS()
+{
+	Serial.println("Listing LittleFS files:");
+	File root = LittleFS.open("/");
+	File file = root.openNextFile();
+	while (file)
+	{
+		Serial.print("  ");
+		Serial.println(file.name());
+		file = root.openNextFile();
+	}
+
+	if (!LittleFS.exists("/config.json"))
+	{
+		Serial.println("Config file not found, using defaults");
+		return;
+	}
+	File f = LittleFS.open("/config.json", "r");
+	if (!f)
+	{
+		Serial.println("Failed to open config file");
+		return;
+	}
+	size_t size = f.size();
+	std::unique_ptr<char[]> buf(new char[size + 1]);
+	f.readBytes(buf.get(), size);
+	buf[size] = '\0';
+	f.close();
+	DynamicJsonDocument doc(256);
+	DeserializationError err = deserializeJson(doc, buf.get());
+	if (err)
+	{
+		Serial.println("Failed to parse config JSON");
+		return;
+	}
+	if (doc.containsKey("TIEMPO_APERTURA_MS"))
+		TIEMPO_APERTURA_MS = doc["TIEMPO_APERTURA_MS"];
+	if (doc.containsKey("SALIDA_DELAY_MS"))
+		SALIDA_DELAY_MS = doc["SALIDA_DELAY_MS"];
+	Serial.println("Config loaded from FS");
+}
+
+void saveParamsToFS()
+{
+	DynamicJsonDocument doc(256);
+	doc["TIEMPO_APERTURA_MS"] = TIEMPO_APERTURA_MS;
+	doc["SALIDA_DELAY_MS"] = SALIDA_DELAY_MS;
+	String out;
+	serializeJson(doc, out);
+	File f = LittleFS.open("/config.json", "w");
+	if (!f)
+		return;
+	f.print(out);
+	f.close();
+}
