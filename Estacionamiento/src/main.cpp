@@ -11,6 +11,7 @@
 #include "config.h"
 #include "webserver.h"
 #include "config_prefs.h"
+#include "telemetry.h"
 #include <ESPmDNS.h>
 
 // ==================== VARIABLES GLOBALES ====================
@@ -31,6 +32,7 @@ noDelay ultrasonicTimer(ULTRASONIC_CHECK_INTERVAL);
 noDelay servoTimer(SERVO_TRANSITION_TIME);
 noDelay displayMessageTimer(DISPLAY_MESSAGE_MS);
 noDelay successMessageTimer(SUCCESS_MESSAGE_MS);
+noDelay telemetryTimer(5000);  // Enviar telemetria cada 5 segundos
 
 noDelay exitRaiseTimer(EXIT_RAISE_MS);
 noDelay exitLowerTimer(EXIT_LOWER_MS);
@@ -57,7 +59,6 @@ int pendingEntries = 0;
 float currentDistance = 0.0;
 String lastRFIDCard = "";
 unsigned long systemUptime = 0;
-float systemTemperature = 25.0;
 
 // Variables configurables desde la API (inicialmente de config.h)
 int ULTRASONIC_THRESHOLD_CONFIG = ULTRASONIC_THRESHOLD;
@@ -102,8 +103,11 @@ void setup() {
 	display.display();
 	// Mostrar estado inicial con contador de espacios disponibles
 
-	// Cargar configuración persistente (si existe)
+	// Cargar configuracion persistente (si existe)
 	loadConfigPrefs();
+
+	// Inicializar telemetria
+	initTelemetry();
 
 	// Mostrar estado inicial con contador de espacios disponibles
 	displayAvailableSlots();
@@ -130,6 +134,8 @@ void setup() {
 		}
 		// Inicializar servidor web
 		initWebServer();
+		// Conectar a servidor de telemetria
+		connectTelemetry();
 	} else {
 		Serial.println();
 		Serial.println("[WIFI] No se pudo conectar dentro del timeout. Web server no iniciado.");
@@ -140,7 +146,7 @@ void setup() {
 }
 
 void loop() {
-	// Actualizar uptime (en milisegundos, la API lo convertirá a segundos)
+	// Actualizar uptime (en milisegundos, la API lo convertira a segundos)
 	systemUptime = millis();
 	
 	updateBarrierLogic();
@@ -148,6 +154,11 @@ void loop() {
 	checkRFID();
 	checkUltrasonicSensor();
 	checkParkingSlots();
+	
+	// Enviar telemetria periodicamente (cada 5s)
+	if (telemetryTimer.update()) {
+		sendSensorReading(currentDistance, systemUptime / 1000, availableSlots);
+	}
 }
 
 void setupSensors() {
@@ -228,6 +239,9 @@ void handleUnauthorizedUser() {
 	displayMessage(MSG_DENIED_1, MSG_DENIED_2);
 	displayMessageTimer.start();
 	deniedMessageActive = true;
+	// Enviar evento RFID denegado
+	String cardUID = getCardUID();
+	sendRFIDAccess(cardUID.c_str(), false, "unauthorized");
 }
 
 void checkUltrasonicSensor() {
@@ -308,6 +322,8 @@ void checkParkingSlots() {
 			}
 			if (availableSlots < 0) availableSlots = 0;
 			Serial.printf("Cajon %d - OCUPADO. Disponibles: %d\n", i + 1, availableSlots);
+			// Enviar telemetria de ocupacion
+			sendSlotOccupancy(i + 1, true);
 			// Actualizar contador en pantalla si no hay mensajes temporales activos
 			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive) {
 				displayAvailableSlots();
@@ -319,6 +335,8 @@ void checkParkingSlots() {
 			updateLED(i, false);
 			availableSlots++;
 			Serial.printf("Cajon %d - DISPONIBLE. Disponibles: %d\n", i + 1, availableSlots);
+			// Enviar telemetria de ocupacion
+			sendSlotOccupancy(i + 1, false);
 			// Actualizar contador en pantalla si no hay mensajes temporales activos
 			if (!deniedMessageActive && !authorizedMessageActive && !timeoutMessageActive) {
 				displayAvailableSlots();

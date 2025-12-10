@@ -32,11 +32,17 @@ bool initWebServer() {
   });
 
   // Ruta para establecer parámetros (soporta body stream)
-  webServer.on("/api/setParams", HTTP_POST, [](AsyncWebServerRequest *request) {
-    handleSetParams(request);
-  }, nullptr, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    handleSetParamsBody(request, data, len, index, total);
-  });
+  // Nota: no procesamos el body en el handler principal porque el body puede llegar
+  // por partes; usamos sólo el body handler para ensamblar y luego llamar a handleSetParams.
+  webServer.on("/api/setParams", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      // Intencionalmente vacío: la respuesta se envía desde el body handler
+    },
+    nullptr,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      handleSetParamsBody(request, data, len, index, total);
+    }
+  );
 
   // Iniciar servidor
   webServer.begin();
@@ -55,7 +61,6 @@ void handleGetStatus(AsyncWebServerRequest *request) {
   doc["cajon2"] = slotOccupied[1];
   doc["disponibles"] = availableSlots;
   doc["uptime"] = (int)(systemUptime / 1000);
-  doc["temp"] = (int)systemTemperature;
   doc["firmware"] = "v1.0.0";
   doc["ip"] = WiFi.localIP().toString();
 

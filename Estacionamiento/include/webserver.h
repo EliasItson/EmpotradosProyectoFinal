@@ -14,7 +14,7 @@ extern bool exitBarrierRaised;
 extern bool slotOccupied[];
 extern int availableSlots;
 extern unsigned long systemUptime;
-extern float systemTemperature;
+// systemTemperature removed (no physical temperature sensor configured)
 
 // Variables de configuración (pueden ser modificadas)
 extern int ULTRASONIC_THRESHOLD_CONFIG;

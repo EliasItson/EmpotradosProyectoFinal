@@ -1,0 +1,52 @@
+{
+  "http://estacionamiento.local": {
+    "post_status": 400,
+    "post_text": "{\"error\":\"JSON inválido\"}",
+    "get_params_status": 200,
+    "get_params_json": {
+      "ULTRASONIC_THRESHOLD": 40,
+      "ULTRASONIC_TIMEOUT_MS": 500,
+      "LOWER_BARRIER_WAIT_MS": 700,
+      "DISPLAY_MESSAGE_MS": 3000
+    },
+    "get_status_status": 200,
+    "get_status_json": {
+      "distancia": 45,
+      "rfidUID": "1C:21:09:49",
+      "plumaEntrada": false,
+      "plumaSalida": false,
+      "cajon1": false,
+      "cajon2": false,
+      "disponibles": 2,
+      "uptime": 4653,
+      "temp": 25,
+      "firmware": "v1.0.0",
+      "ip": "192.168.100.91"
+    }
+  },
+  "http://192.168.100.91": {
+    "post_status": 400,
+    "post_text": "{\"error\":\"JSON inválido\"}",
+    "get_params_status": 200,
+    "get_params_json": {
+      "ULTRASONIC_THRESHOLD": 40,
+      "ULTRASONIC_TIMEOUT_MS": 500,
+      "LOWER_BARRIER_WAIT_MS": 700,
+      "DISPLAY_MESSAGE_MS": 3000
+    },
+    "get_status_status": 200,
+    "get_status_json": {
+      "distancia": 45,
+      "rfidUID": "1C:21:09:49",
+      "plumaEntrada": false,
+      "plumaSalida": false,
+      "cajon1": false,
+      "cajon2": false,
+      "disponibles": 2,
+      "uptime": 4653,
+      "temp": 25,
+      "firmware": "v1.0.0",
+      "ip": "192.168.100.91"
+    }
+  }
+}

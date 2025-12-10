@@ -65,11 +65,12 @@ void saveConfigPrefs() {
     return;
   }
 
+  // Guardar valores y registrar cambios
   prefs.putInt("ultr_th", ULTRASONIC_THRESHOLD_CONFIG);
   prefs.putInt("ultr_to", ULTRASONIC_TIMEOUT_CONFIG);
   prefs.putInt("lower_wait", LOWER_BARRIER_WAIT_CONFIG);
   prefs.putInt("disp_ms", DISPLAY_MESSAGE_CONFIG);
 
-  Serial.println("[PREFS] Configuración guardada en Preferences");
+  Serial.println("[PREFS] Configuracion guardada en Preferences");
   prefs.end();
 }
