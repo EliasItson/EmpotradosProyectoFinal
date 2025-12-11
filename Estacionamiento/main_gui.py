@@ -134,15 +134,15 @@ class EstacionamientoGUI:
         frame = ttk.LabelFrame(self.tab_params, text="Parámetros del Sistema", padding=20)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Tiempo apertura pluma
-        ttk.Label(frame, text="Tiempo apertura pluma (ms):", font=("Arial", 10)).grid(row=0, column=0, sticky=tk.W, pady=10)
-        self.ent_tiempo = ttk.Entry(frame, width=15, font=("Arial", 10))
-        self.ent_tiempo.grid(row=0, column=1, sticky=tk.W, padx=10)
-        
         # Delay pluma salida
-        ttk.Label(frame, text="Delay pluma salida (ms):", font=("Arial", 10)).grid(row=1, column=0, sticky=tk.W, pady=10)
+        ttk.Label(frame, text="Delay pluma salida (ms):", font=("Arial", 10)).grid(row=0, column=0, sticky=tk.W, pady=10)
         self.ent_salida = ttk.Entry(frame, width=15, font=("Arial", 10))
-        self.ent_salida.grid(row=1, column=1, sticky=tk.W, padx=10)
+        self.ent_salida.grid(row=0, column=1, sticky=tk.W, padx=10)
+        
+        # Timeout ultrasonico
+        ttk.Label(frame, text="Timeout ultrasonico (ms):", font=("Arial", 10)).grid(row=1, column=0, sticky=tk.W, pady=10)
+        self.ent_timeout_us = ttk.Entry(frame, width=15, font=("Arial", 10))
+        self.ent_timeout_us.grid(row=1, column=1, sticky=tk.W, padx=10)
         
         # Botones
         ttk.Button(frame, text="Cargar Parámetros", command=self.cargar_parametros).grid(row=2, column=0, pady=20, padx=10)
@@ -240,10 +240,10 @@ class EstacionamientoGUI:
         try:
             res = requests.get(f"{self.esp32_url}/api/getParams", timeout=5)
             data = res.json()
-            self.ent_tiempo.delete(0, tk.END)
-            self.ent_tiempo.insert(0, str(data.get("TIEMPO_APERTURA_MS", "")))
             self.ent_salida.delete(0, tk.END)
             self.ent_salida.insert(0, str(data.get("SALIDA_DELAY_MS", "")))
+            self.ent_timeout_us.delete(0, tk.END)
+            self.ent_timeout_us.insert(0, str(data.get("ULTRASONIC_TIMEOUT_MS", "")))
             self.lbl_params_status.config(text="✓ Parámetros cargados correctamente", foreground="green")
         except Exception as e:
             self.lbl_params_status.config(text=f"✗ Error al cargar: {e}", foreground="red")
@@ -252,8 +252,8 @@ class EstacionamientoGUI:
         """Guardar parámetros en ESP32"""
         try:
             params = {
-                "TIEMPO_APERTURA_MS": int(self.ent_tiempo.get()),
-                "SALIDA_DELAY_MS": int(self.ent_salida.get())
+                "SALIDA_DELAY_MS": int(self.ent_salida.get()),
+                "ULTRASONIC_TIMEOUT_MS": int(self.ent_timeout_us.get())
             }
             res = requests.post(f"{self.esp32_url}/api/setParams", json=params, timeout=5)
             self.lbl_params_status.config(text="✓ Parámetros guardados correctamente", foreground="green")
