@@ -43,7 +43,9 @@ bool exitLowerWaiting = false;
 // (entrance timing uses lowerBarrierWaitTimer - no dynamic vars here)
 
 // Timeout: si no detecta auto, baja	barrera y cancela acceso
-noDelay ultrasonicNoCarTimer(ULTRASONIC_TIMEOUT_MS);
+// NoDelay instance for ultrasonic "no car" timeout. We'll start it with
+// a configurable value at runtime so web UI can change the timeout.
+noDelay ultrasonicNoCarTimer;
 // Esperar antes de bajar
 noDelay lowerBarrierWaitTimer(LOWER_BARRIER_WAIT_MS);
 // Flag: el auto fue detectado alguna vez
@@ -91,8 +93,9 @@ String lastEntryTime[SLOTS_COUNT];
 String lastExitTime[SLOTS_COUNT];
 
 // Parámetros configurables (valores por defecto tomados de config.h)
-int TIEMPO_APERTURA_MS = SERVO_TRANSITION_TIME;
 int SALIDA_DELAY_MS = EXIT_RAISE_MS;
+// Tiempo de espera dinámico para que el ultrasonico considere aparecer un auto (ms)
+int ULTRASONIC_TIMEOUT_MS_VAR = ULTRASONIC_TIMEOUT_MS;
 
 // Funciones de FS / API
 bool initFileSystem();
@@ -125,7 +128,7 @@ void setup()
 	// Inicializar WiFi en modo STA (Station)
 	Serial.println("Conectando a WiFi...");
 	WiFi.mode(WIFI_STA);
-	WiFi.begin("Elias", "babababa");
+	WiFi.begin("Rat World", "274000403");
 
 	// Esperar a que se conecte (máximo 20 segundos)
 	int wifiAttempts = 0;
@@ -217,7 +220,8 @@ void setupActuators()
 	barrierServoEntry.attach(SERVO_ENTRY_PIN);
 	barrierServoExit.attach(SERVO_EXIT_PIN);
 	barrierServoEntry.write(SERVO_ANGLE_DOWN);
-	barrierServoExit.write(SERVO_ANGLE_DOWN);
+	// Si el servo de salida está invertido mecánicamente, escribir el ángulo invertido
+	barrierServoExit.write( (SERVO_EXIT_INVERT) ? (180 - SERVO_ANGLE_DOWN) : (SERVO_ANGLE_DOWN) );
 	entranceBarrierRaised = false;
 	exitBarrierRaised = false;
 	pinMode(LED_RED_SLOT1, OUTPUT);
@@ -286,6 +290,8 @@ void handleAuthorizedUser()
 	entranceBarrierPhase = 1; // Esperar a que el auto pase
 	carDetectedRecently = false;
 	carCurrentlyDetected = false;
+	// start the ultrasonic "no car" timeout using the runtime-configurable value
+	ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 	ultrasonicNoCarTimer.start();
 	successMessageTimer.start();
 	authorizedMessageActive = true;
@@ -346,6 +352,7 @@ void checkUltrasonicSensor()
 				Serial.println("[US] Auto detectado: sensor bloqueado");
 			}
 			// Resetear timeout mientras el auto esté siendo detectado
+			ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 			ultrasonicNoCarTimer.start();
 		}
 		if (!carDetected && carCurrentlyDetected && carDetectedRecently)
@@ -361,26 +368,26 @@ void checkUltrasonicSensor()
 
 void raiseEntranceBarrier()
 {
-	barrierServoEntry.write(SERVO_ANGLE_UP);
+		barrierServoEntry.write(SERVO_ANGLE_UP);
 	entranceBarrierRaised = true;
 	servoTimer.start();
 }
 void lowerEntranceBarrier()
 {
-	barrierServoEntry.write(SERVO_ANGLE_DOWN);
+		barrierServoEntry.write(SERVO_ANGLE_DOWN);
 	entranceBarrierRaised = false;
 	servoTimer.start();
 }
 
 void raiseExitBarrier()
 {
-	barrierServoExit.write(SERVO_ANGLE_UP);
+		barrierServoExit.write( (SERVO_EXIT_INVERT) ? (180 - SERVO_ANGLE_UP) : (SERVO_ANGLE_UP) );
 	exitBarrierRaised = true;
 	servoTimer.start();
 }
 void lowerExitBarrier()
 {
-	barrierServoExit.write(SERVO_ANGLE_DOWN);
+		barrierServoExit.write( (SERVO_EXIT_INVERT) ? (180 - SERVO_ANGLE_DOWN) : (SERVO_ANGLE_DOWN) );
 	exitBarrierRaised = false;
 	servoTimer.start();
 }
@@ -612,8 +619,8 @@ void setupWebServer()
 		html += "  </div>\n";
 		html += "  <div id=\"configuracion\">\n";
 	html += "    <h2>Parámetros Configurables</h2>\n";
-	html += "    <label>Tiempo apertura pluma (ms):<input type=\"number\" id=\"tiempoPluma\"></label>\n";
 	html += "    <label>Delay pluma salida (ms):<input type=\"number\" id=\"delaySalida\"></label>\n";
+	html += "    <label>Timeout ultrasonico (ms):<input type=\"number\" id=\"timeoutUltrasonico\"></label>\n";
 	html += "    <button onclick=\"guardarParametros()\">Guardar</button>\n";
 		html += "  </div>\n";
 		html += "  <script>\n";
@@ -635,19 +642,19 @@ void setupWebServer()
 		html += "    function actualizarParametros() {\n";
 		html += "      if(!enfoque) {\n";
 		html += "        fetch(\"/api/getParams\").then(r=>r.json()).then(d=>{\n";
-		html += "          document.getElementById(\"tiempoPluma\").value=d.TIEMPO_APERTURA_MS;\n";
 		html += "          document.getElementById(\"delaySalida\").value=d.SALIDA_DELAY_MS;\n";
+		html += "          document.getElementById(\"timeoutUltrasonico\").value=d.ULTRASONIC_TIMEOUT_MS;\n";
 		html += "        }).catch(e=>console.error(\"Error:\",e));\n";
 		html += "      }\n";
 		html += "    }\n";
 		html += "    function guardarParametros() {\n";
-		html += "      let p={TIEMPO_APERTURA_MS:parseInt(document.getElementById(\"tiempoPluma\").value),SALIDA_DELAY_MS:parseInt(document.getElementById(\"delaySalida\").value)};\n";
+		html += "      let p={SALIDA_DELAY_MS:parseInt(document.getElementById(\"delaySalida\").value),ULTRASONIC_TIMEOUT_MS:parseInt(document.getElementById(\"timeoutUltrasonico\").value)};\n";
 		html += "      fetch(\"/api/setParams\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify(p)}).then(()=>{alert(\"Guardado\");enfoque=false;actualizarParametros();}).catch(e=>console.error(\"Error:\",e));\n";
 		html += "    }\n";
-		html += "    document.getElementById(\"tiempoPluma\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
-		html += "    document.getElementById(\"tiempoPluma\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
 		html += "    document.getElementById(\"delaySalida\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
 		html += "    document.getElementById(\"delaySalida\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
+		html += "    document.getElementById(\"timeoutUltrasonico\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
+		html += "    document.getElementById(\"timeoutUltrasonico\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
 		html += "    setInterval(()=>{actualizarEstado();actualizarParametros();},1000);\n";
 		html += "    actualizarEstado();actualizarParametros();\n";
 		html += "  </script>\n</body>\n</html>";
@@ -687,8 +694,8 @@ void handle_getStatus()
 void handle_getParams()
 {
 	DynamicJsonDocument doc(256);
-	doc["TIEMPO_APERTURA_MS"] = TIEMPO_APERTURA_MS;
 	doc["SALIDA_DELAY_MS"] = SALIDA_DELAY_MS;
+	doc["ULTRASONIC_TIMEOUT_MS"] = ULTRASONIC_TIMEOUT_MS_VAR;
 	String out;
 	serializeJson(doc, out);
 	server.send(200, "application/json", out);
@@ -709,10 +716,13 @@ void handle_setParams()
 		server.send(400, "application/json", "{\"error\":\"invalid json\"}");
 		return;
 	}
-	if (doc.containsKey("TIEMPO_APERTURA_MS"))
-		TIEMPO_APERTURA_MS = doc["TIEMPO_APERTURA_MS"];
 	if (doc.containsKey("SALIDA_DELAY_MS"))
 		SALIDA_DELAY_MS = doc["SALIDA_DELAY_MS"];
+	if (doc.containsKey("ULTRASONIC_TIMEOUT_MS"))
+		ULTRASONIC_TIMEOUT_MS_VAR = doc["ULTRASONIC_TIMEOUT_MS"];
+	// Ensure current timer uses latest value when changed via API
+	if (doc.containsKey("ULTRASONIC_TIMEOUT_MS"))
+		ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 	saveParamsToFS();
 	server.send(200, "application/json", "{\"ok\":true}");
 }
@@ -752,18 +762,20 @@ void loadParamsFromFS()
 		Serial.println("Failed to parse config JSON");
 		return;
 	}
-	if (doc.containsKey("TIEMPO_APERTURA_MS"))
-		TIEMPO_APERTURA_MS = doc["TIEMPO_APERTURA_MS"];
 	if (doc.containsKey("SALIDA_DELAY_MS"))
 		SALIDA_DELAY_MS = doc["SALIDA_DELAY_MS"];
+	if (doc.containsKey("ULTRASONIC_TIMEOUT_MS"))
+		ULTRASONIC_TIMEOUT_MS_VAR = doc["ULTRASONIC_TIMEOUT_MS"];
+	// Apply the loaded value to the running timer
+	ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 	Serial.println("Config loaded from FS");
 }
 
 void saveParamsToFS()
 {
 	DynamicJsonDocument doc(256);
-	doc["TIEMPO_APERTURA_MS"] = TIEMPO_APERTURA_MS;
 	doc["SALIDA_DELAY_MS"] = SALIDA_DELAY_MS;
+	doc["ULTRASONIC_TIMEOUT_MS"] = ULTRASONIC_TIMEOUT_MS_VAR;
 	String out;
 	serializeJson(doc, out);
 	File f = LittleFS.open("/config.json", "w");

@@ -17,7 +17,7 @@ from datetime import datetime
 import requests
 
 # Configuración
-ESP32_IP = "192.168.177.162"  # IP del ESP32
+ESP32_IP = "192.168.100.91"  # IP del ESP32
 ESP32_PORT = 80  # Puerto del webserver
 COLLECTOR_PORT = 5000  # Puerto TCP del collector
 POLL_INTERVAL = 2  # segundos entre consultas al ESP32

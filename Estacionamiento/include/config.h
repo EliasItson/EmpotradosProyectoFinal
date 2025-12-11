@@ -86,6 +86,11 @@
 // Tiempo de transición del servo en ms
 #define SERVO_TRANSITION_TIME 500
 
+// Invertir mecánicamente el servo de salida?
+// Si tu servo de salida está montado en sentido inverso respecto al de entrada,
+// pon 1 para que el firmware escriba (180 - angle) al servo de salida.
+#define SERVO_EXIT_INVERT 0
+
 // ==================== CONFIGURACIÓN DE LA SECUENCIA DE SALIDA ====================
 
 // Tiempo para levantar y bajar la barra de salida en ms
