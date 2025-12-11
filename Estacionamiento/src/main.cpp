@@ -167,6 +167,12 @@ void setup()
 		Serial.println("Error: No se pudo conectar a WiFi. Continuando sin conexión...");
 	}
 
+	// Inicializar LittleFS
+	if (!initFileSystem())
+	{
+		Serial.println("Warning: Could not initialize LittleFS");
+	}
+
 	// Inicializar servidor web
 	setupWebServer();
 	server.begin();
@@ -587,78 +593,50 @@ bool initFileSystem()
 
 void setupWebServer()
 {
-	// Servir página principal con HTML/CSS/JS inline
+	// Servir página principal desde LittleFS
 	server.on("/", HTTP_GET, []()
 			  {
-		String html = "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n";
-		html += "  <meta charset=\"UTF-8\">\n";
-		html += "  <title>Estacionamiento Inteligente</title>\n";
-		html += "  <style>\n";
-		html += "    body { font-family: Arial, sans-serif; background-color: #f0f0f0; padding: 20px; }\n";
-		html += "    h1, h2 { text-align: center; }\n";
-		html += "    #estado, #configuracion { background-color: #fff; padding: 15px; margin: 15px auto; border-radius: 10px; width: 300px; box-shadow: 0 0 5px rgba(0,0,0,0.3); }\n";
-		html += "    label { display: block; margin: 10px 0; }\n";
-		html += "    input { width: 100%; padding: 5px; }\n";
-		html += "    button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }\n";
-		html += "    button:hover { background: #0056b3; }\n";
-		html += "    p { margin: 5px 0; }\n";
-		html += "  </style>\n</head>\n<body>\n";
-		html += "  <h1>Estacionamiento Inteligente</h1>\n";
-		html += "  <div id=\"estado\">\n";
-		html += "    <h2>Estado Actual</h2>\n";
-		html += "    <p id=\"rfid\">RFID: --</p>\n";
-		html += "    <p id=\"distancia\">Distancia: -- cm</p>\n";
-		html += "    <p id=\"plumaEntrada\">Pluma Entrada: --</p>\n";
-		html += "    <p id=\"plumaSalida\">Pluma Salida: --</p>\n";
-		html += "    <p id=\"cajon1\">Cajón 1: --</p>\n";
-		html += "    <p id=\"cajon2\">Cajón 2: --</p>\n";
-		html += "    <p id=\"entry1\">Entrada 1: --</p>\n";
-		html += "    <p id=\"exit1\">Salida 1: --</p>\n";
-		html += "    <p id=\"entry2\">Entrada 2: --</p>\n";
-		html += "    <p id=\"exit2\">Salida 2: --</p>\n";
-		html += "  </div>\n";
-		html += "  <div id=\"configuracion\">\n";
-	html += "    <h2>Parámetros Configurables</h2>\n";
-	html += "    <label>Delay pluma salida (ms):<input type=\"number\" id=\"delaySalida\"></label>\n";
-	html += "    <label>Timeout ultrasonico (ms):<input type=\"number\" id=\"timeoutUltrasonico\"></label>\n";
-	html += "    <button onclick=\"guardarParametros()\">Guardar</button>\n";
-		html += "  </div>\n";
-		html += "  <script>\n";
-		html += "    let enfoque = false;\n";
-		html += "    function actualizarEstado() {\n";
-		html += "      fetch(\"/api/getStatus\").then(r=>r.json()).then(d=>{\n";
-		html += "        document.getElementById(\"rfid\").innerText=\"RFID: \"+d.rfidUID;\n";
-		html += "        document.getElementById(\"distancia\").innerText=\"Distancia: \"+d.distancia.toFixed(2)+\" cm\";\n";
-		html += "        document.getElementById(\"plumaEntrada\").innerText=\"Pluma Entrada: \"+(d.plumaEntrada?\"Abierta\":\"Cerrada\");\n";
-		html += "        document.getElementById(\"plumaSalida\").innerText=\"Pluma Salida: \"+(d.plumaSalida?\"Abierta\":\"Cerrada\");\n";
-		html += "        document.getElementById(\"cajon1\").innerText=\"Cajón 1: \"+(d.cajon1?\"Ocupado\":\"Libre\");\n";
-		html += "        document.getElementById(\"cajon2\").innerText=\"Cajón 2: \"+(d.cajon2?\"Ocupado\":\"Libre\");\n";
-		html += "        document.getElementById(\"entry1\").innerText=\"Entrada 1: \"+ (d.entryTime1?d.entryTime1:\"--\");\n";
-		html += "        document.getElementById(\"exit1\").innerText=\"Salida 1: \"+ (d.exitTime1?d.exitTime1:\"--\");\n";
-		html += "        document.getElementById(\"entry2\").innerText=\"Entrada 2: \"+ (d.entryTime2?d.entryTime2:\"--\");\n";
-		html += "        document.getElementById(\"exit2\").innerText=\"Salida 2: \"+ (d.exitTime2?d.exitTime2:\"--\");\n";
-		html += "      }).catch(e=>console.error(\"Error:\",e));\n";
-		html += "    }\n";
-		html += "    function actualizarParametros() {\n";
-		html += "      if(!enfoque) {\n";
-		html += "        fetch(\"/api/getParams\").then(r=>r.json()).then(d=>{\n";
-		html += "          document.getElementById(\"delaySalida\").value=d.SALIDA_DELAY_MS;\n";
-		html += "          document.getElementById(\"timeoutUltrasonico\").value=d.ULTRASONIC_TIMEOUT_MS;\n";
-		html += "        }).catch(e=>console.error(\"Error:\",e));\n";
-		html += "      }\n";
-		html += "    }\n";
-		html += "    function guardarParametros() {\n";
-		html += "      let p={SALIDA_DELAY_MS:parseInt(document.getElementById(\"delaySalida\").value),ULTRASONIC_TIMEOUT_MS:parseInt(document.getElementById(\"timeoutUltrasonico\").value)};\n";
-		html += "      fetch(\"/api/setParams\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify(p)}).then(()=>{alert(\"Guardado\");enfoque=false;actualizarParametros();}).catch(e=>console.error(\"Error:\",e));\n";
-		html += "    }\n";
-		html += "    document.getElementById(\"delaySalida\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
-		html += "    document.getElementById(\"delaySalida\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
-		html += "    document.getElementById(\"timeoutUltrasonico\").addEventListener(\"focus\",()=>{enfoque=true;});\n";
-		html += "    document.getElementById(\"timeoutUltrasonico\").addEventListener(\"blur\",()=>{enfoque=false;});\n";
-		html += "    setInterval(()=>{actualizarEstado();actualizarParametros();},1000);\n";
-		html += "    actualizarEstado();actualizarParametros();\n";
-		html += "  </script>\n</body>\n</html>";
-		server.send(200, "text/html", html); });
+		if (LittleFS.exists("/index.html"))
+		{
+			File file = LittleFS.open("/index.html", "r");
+			server.streamFile(file, "text/html");
+			file.close();
+		}
+		else
+		{
+			server.send(404, "text/plain", "index.html not found");
+		}
+	});
+
+	// Servir CSS
+	server.on("/style.css", HTTP_GET, []()
+			  {
+		if (LittleFS.exists("/style.css"))
+		{
+			File file = LittleFS.open("/style.css", "r");
+			server.streamFile(file, "text/css");
+			file.close();
+		}
+		else
+		{
+			server.send(404, "text/plain", "style.css not found");
+		}
+	});
+
+	// Servir JavaScript
+	server.on("/script.js", HTTP_GET, []()
+			  {
+		if (LittleFS.exists("/script.js"))
+		{
+			File file = LittleFS.open("/script.js", "r");
+			server.streamFile(file, "application/javascript");
+			file.close();
+		}
+		else
+		{
+			server.send(404, "text/plain", "script.js not found");
+		}
+	});
 
 	// API endpoints
 	server.on("/api/getStatus", HTTP_GET, handle_getStatus);

@@ -7,7 +7,6 @@
 </head>
 <body>
   <h1>Estacionamiento Inteligente</h1>
-
   <div id="estado">
     <h2>Estado Actual</h2>
     <p id="rfid">RFID: --</p>
@@ -16,19 +15,17 @@
     <p id="plumaSalida">Pluma Salida: --</p>
     <p id="cajon1">Cajón 1: --</p>
     <p id="cajon2">Cajón 2: --</p>
+    <p id="entry1">Entrada 1: --</p>
+    <p id="exit1">Salida 1: --</p>
+    <p id="entry2">Entrada 2: --</p>
+    <p id="exit2">Salida 2: --</p>
   </div>
-
   <div id="configuracion">
     <h2>Parámetros Configurables</h2>
-    <label>Tiempo apertura pluma (ms):
-      <input type="number" id="tiempoPluma">
-    </label>
-    <label>Delay pluma salida (ms):
-      <input type="number" id="delaySalida">
-    </label>
+    <label>Delay pluma salida (ms):<input type="number" id="delaySalida"></label>
+    <label>Timeout ultrasonico (ms):<input type="number" id="timeoutUltrasonico"></label>
     <button onclick="guardarParametros()">Guardar</button>
   </div>
-
   <script src="script.js"></script>
 </body>
 </html>
