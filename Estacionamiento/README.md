@@ -122,12 +122,27 @@ Los eventos se registran automáticamente:
 - Ocupación de espacios
 
 Base de datos: `estacionamiento` (localhost)
-- Tabla: `sensor_readings`
-- Tabla: `barrier_events`
-- Tabla: `rfid_access`
-- Tabla: `config_changes`
-- Tabla: `slot_occupancy`
-- Tabla: `system_events`
+
+La implementación actual crea una única tabla principal llamada `lecturas` que almacena el estado completo del sistema en cada registro. El script de inicialización está en `pc/setup_db.py`.
+
+Esquema de la tabla `estacionamiento.lecturas`:
+
+- `id` INT AUTO_INCREMENT PRIMARY KEY
+- `timestamp` DATETIME DEFAULT CURRENT_TIMESTAMP
+- `rfidUID` VARCHAR(50)
+- `distancia` FLOAT
+- `plumaEntrada` BOOLEAN
+- `plumaSalida` BOOLEAN
+- `cajon1` BOOLEAN
+- `cajon2` BOOLEAN
+- `entryTime1` VARCHAR(255)
+- `exitTime1` VARCHAR(255)
+- `entryTime2` VARCHAR(255)
+- `exitTime2` VARCHAR(255)
+- INDEX `idx_timestamp` (`timestamp`)
+- INDEX `idx_cajon1` (`cajon1`)
+- INDEX `idx_cajon2` (`cajon2`)
+
 
 ## Licencia
 
