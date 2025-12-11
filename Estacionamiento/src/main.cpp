@@ -37,14 +37,10 @@ noDelay exitRaiseTimer(EXIT_RAISE_MS);
 noDelay exitLowerTimer(EXIT_LOWER_MS);
 bool exitSequenceActive = false;
 int exitPhase = 0; // 0 = INACTIVO, 1 = ESPERANDO PARA SUBIR, 2 = ESPERANDO PARA BAJAR
-// Variables para temporización dinámica de la pluma de salida
 unsigned long exitLowerStartMillis = 0;
 bool exitLowerWaiting = false;
-// (entrance timing uses lowerBarrierWaitTimer - no dynamic vars here)
 
 // Timeout: si no detecta auto, baja	barrera y cancela acceso
-// NoDelay instance for ultrasonic "no car" timeout. We'll start it with
-// a configurable value at runtime so web UI can change the timeout.
 noDelay ultrasonicNoCarTimer;
 // Esperar antes de bajar
 noDelay lowerBarrierWaitTimer(LOWER_BARRIER_WAIT_MS);
@@ -56,7 +52,6 @@ bool carCurrentlyDetected = false;
 int entranceBarrierPhase = 0;
 
 int availableSlots = SLOTS_COUNT;
-// Reservas temporales por accesos concedidos que aún no se han estacionado
 int pendingEntries = 0;
 
 // Declaraciones
@@ -296,7 +291,6 @@ void handleAuthorizedUser()
 	entranceBarrierPhase = 1; // Esperar a que el auto pase
 	carDetectedRecently = false;
 	carCurrentlyDetected = false;
-	// start the ultrasonic "no car" timeout using the runtime-configurable value
 	ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 	ultrasonicNoCarTimer.start();
 	successMessageTimer.start();
@@ -470,7 +464,6 @@ void displayMessage(String line1, String line2)
 	display.print(line1);
 	if (line2.length())
 	{
-		// second line starting a bit lower (10 px)
 		display.setCursor(0, 12);
 		display.print(line2);
 	}
@@ -698,7 +691,6 @@ void handle_setParams()
 		SALIDA_DELAY_MS = doc["SALIDA_DELAY_MS"];
 	if (doc.containsKey("ULTRASONIC_TIMEOUT_MS"))
 		ULTRASONIC_TIMEOUT_MS_VAR = doc["ULTRASONIC_TIMEOUT_MS"];
-	// Ensure current timer uses latest value when changed via API
 	if (doc.containsKey("ULTRASONIC_TIMEOUT_MS"))
 		ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 	saveParamsToFS();
@@ -744,7 +736,6 @@ void loadParamsFromFS()
 		SALIDA_DELAY_MS = doc["SALIDA_DELAY_MS"];
 	if (doc.containsKey("ULTRASONIC_TIMEOUT_MS"))
 		ULTRASONIC_TIMEOUT_MS_VAR = doc["ULTRASONIC_TIMEOUT_MS"];
-	// Apply the loaded value to the running timer
 	ultrasonicNoCarTimer.setdelay(ULTRASONIC_TIMEOUT_MS_VAR);
 	Serial.println("Config loaded from FS");
 }

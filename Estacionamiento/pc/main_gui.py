@@ -21,8 +21,8 @@ from datetime import datetime, timedelta
 import time
 
 # Configuración
-ESP32_IP = "192.168.100.91"
-ESP32_PORT = 80
+ESP32_IP = "192.168.100.91" # IP del ESP32
+ESP32_PORT = 80 # Puerto del webserver
 
 DB_CONFIG = {
     'host': 'localhost',

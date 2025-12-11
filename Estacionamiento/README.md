@@ -23,17 +23,6 @@ Estacionamiento/
 │   ├── collector.py           # Recolector de datos telemetría
 │   └── setup_db.py            # Script de inicialización de base de datos
 │
-├── docs/                      # Documentación del proyecto
-│   ├── DIAGRAMAS_FLUJO.md     # Diagramas de flujo del sistema
-│   ├── ESQUEMA_CONEXION.md    # Esquema de conexión de hardware
-│   ├── INICIO_RAPIDO.md       # Guía de inicio rápido
-│   ├── PRUEBAS_DEBUGGING.md   # Guía de debugging y pruebas
-│   └── ...                    # Otros documentos
-│
-├── logs/                      # Logs y archivos temporales (no incluir en git)
-│   ├── gui_error.log          # Logs de errores de la GUI
-│   └── main.txt               # Logs temporales
-│
 ├── lib/                       # Librerías externas (gestionadas por PlatformIO)
 ├── .pio/                      # Compilados PlatformIO (no incluir en git)
 ├── .venv/                     # Entorno virtual Python (no incluir en git)
@@ -93,8 +82,8 @@ pip install -r requirements.txt
 ## Uso
 
 ### Interfaz Web
-1. Conectar ESP32 a WiFi (SSID: "Rat World")
-2. Acceder a `http://192.168.100.91` (o `http://estacionamiento.local`)
+1. Conectar ESP32 a WiFi
+2. Acceder a localhost
 3. Ver estado en tiempo real y configurar parámetros
 
 ### GUI de Monitoreo (Python)
@@ -139,10 +128,6 @@ Base de datos: `estacionamiento` (localhost)
 - Tabla: `config_changes`
 - Tabla: `slot_occupancy`
 - Tabla: `system_events`
-
-## Troubleshooting
-
-Ver `docs/PRUEBAS_DEBUGGING.md` para guía completa de debugging.
 
 ## Licencia
 

@@ -136,17 +136,6 @@ static const char *AUTHORIZED_CARDS[] = {
 
 static const int AUTHORIZED_CARDS_COUNT = 2;
 
-// ==================== MODOS DE DEBUG ====================
-
-// Descomenta para activar modo debug (más mensajes en Serial)
-// #define DEBUG_MODE
-
-// Descomenta para ver distancias del ultrasónico en tiempo real
-// #define DEBUG_ULTRASONIC
-
-// Descomenta para ver estados de switches
-// #define DEBUG_SWITCHES
-
 // ==================== CONFIGURACIÓN AVANZADA ====================
 
 // Baudrate del Serial Monitor
