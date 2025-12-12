@@ -6,7 +6,7 @@
 #define CONFIG_H
 
 // ==================== PINES ====================
-// 
+//
 
 // RFID (SPI)
 #define RFID_SS_PIN 5
@@ -67,7 +67,6 @@
 #define ULTRASONIC_TRIG_PREP_US 2
 #define ULTRASONIC_TRIG_PULSE_US 10
 
-
 // ==================== CONFIGURACIÓN DEL SENSOR ULTRASÓNICO ====================
 
 // Distancia en cm por la cual se considera que hay un obstáculo (vehículo bloqueando)
@@ -75,7 +74,6 @@
 // Si distancia >= THRESHOLD: camino libre (auto pasó o no hay auto)
 #define ULTRASONIC_THRESHOLD 30
 #define ULTRASONIC_FACTOR 0.0343
-
 
 // ==================== CONFIGURACIÓN DEL SERVOMOTOR ====================
 
@@ -87,6 +85,11 @@
 
 // Tiempo de transición del servo en ms
 #define SERVO_TRANSITION_TIME 500
+
+// Invertir mecánicamente el servo de salida?
+// Si tu servo de salida está montado en sentido inverso respecto al de entrada,
+// pon 1 para que el firmware escriba (180 - angle) al servo de salida.
+#define SERVO_EXIT_INVERT 0
 
 // ==================== CONFIGURACIÓN DE LA SECUENCIA DE SALIDA ====================
 
@@ -126,23 +129,12 @@
 
 // Formato: "XX:XX:XX:XX"
 
-static const char* AUTHORIZED_CARDS[] = {
-  "1C:21:09:49",  // Tarjeta 1
-  "43:23:7A:1A"   // Tarjeta 2
+static const char *AUTHORIZED_CARDS[] = {
+    "1C:21:09:49", // Tarjeta 1
+    "43:23:7A:1A"  // Tarjeta 2
 };
 
 static const int AUTHORIZED_CARDS_COUNT = 2;
-
-// ==================== MODOS DE DEBUG ====================
-
-// Descomenta para activar modo debug (más mensajes en Serial)
-// #define DEBUG_MODE
-
-// Descomenta para ver distancias del ultrasónico en tiempo real
-// #define DEBUG_ULTRASONIC
-
-// Descomenta para ver estados de switches
-// #define DEBUG_SWITCHES
 
 // ==================== CONFIGURACIÓN AVANZADA ====================
 
@@ -150,6 +142,10 @@ static const int AUTHORIZED_CARDS_COUNT = 2;
 #define SERIAL_BAUD 115200
 
 #endif // CONFIG_H
+
+// NTP defaults
+#define NTP_SERVER "pool.ntp.org"
+#define NTP_TIMEOUT_MS 10000
 
 // =====================================================================
 // INSTRUCCIONES DE USO:

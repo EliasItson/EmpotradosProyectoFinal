@@ -3,3 +3,22 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Python virtual environment
+.venv/
+
+# PlatformIO build and cache
+.pio/
+
+# LittleFS upload artifacts
+*.bin
+
+# Local logs and temp files
+logs/
+*.log
+gui_error.log
+main.txt
+
+# OS files
+.DS_Store
+Thumbs.db
